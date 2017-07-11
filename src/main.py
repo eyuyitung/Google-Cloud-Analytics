@@ -1,4 +1,5 @@
 from googleapiclient import discovery
+from google.cloud import monitoring
 import google.auth
 import os
 import pprint
@@ -9,8 +10,12 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + "\\google-credenti
 credentials, project = google.auth.default()
 
 rm = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
-
 comp = discovery.build('compute', 'v1', credentials=credentials)
+
+def get_monitoring_client(project) :
+    return monitoring.Client(project = project,credentials=credentials)
+
+
 
 
 def main():
@@ -27,6 +32,10 @@ def main():
         instreq = comp.instances().list(project=project_id, zone=zone_name)
         instres = instreq.execute()
         if 'items' in instres:
+            client = get_monitoring_client(project_id,zone = zone_name)
+            METRIC = 'compute.googleapis.com/instance/cpu/utilization'
+            query =(client.query(METRIC,minutes= 5))
+            print(query.as_dataframe())
             instance_name = (instres['items'][0]['name'])
             status = (instres['items'][0]['status'])
             machineurl = instres['items'][0]['machineType']
@@ -41,6 +50,7 @@ def main():
                               'active instances': instance_name,
                               'instance status': status,
                                'machine type': machineType})
+
         else: instances.append(zone_name)
     pprint.pprint(instances)
 if __name__ == '__main__':
