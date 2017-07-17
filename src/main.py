@@ -2,6 +2,7 @@ from google.cloud import monitoring
 from googleapiclient import discovery
 import google.auth
 import os
+import csv
 import json
 from pprint import pprint
 
@@ -42,12 +43,20 @@ def main():
         for zone in all_zones:  # for each zone in list of zone dictionaries :
             zone_name = zone['name']
             current_instances = api_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
+
             if current_instances is not None and len(current_instances) > 0:
+                pprint(compute.disks().list(project=project_id, zone=zone_name).execute())
                 project['instances'].extend(current_instances)
+                #for item in compute.disks().list(project=project_id, zone=zone_name).execute()['items']:
+                #    print item['name']+' '+item['sizeGb']
+                #pprint(current_instances)
         print "Found %d instances" % len(project['instances'])
         project['metrics'] = {}
         for key in instance_metrics:  # TODO Associate metrics with respective instance
             project['metrics'][key] = monitoring_call(project_id, key)
+    to_csv([{'ya':'yahoo','yay':'yep'},{'good':'sick','great':'i know','sure':'really'},{'good':'cool','great':'i know','sure':'really'}])
+    print read_csv()
+    print get_ram('model-2')
 
 
 def api_call(base, key, args): # generic method for pulling relevant data from api response
@@ -70,6 +79,45 @@ def monitoring_call(project_id, metric):
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
     query = client.query(METRIC, minutes=5)
     return query.as_dataframe()
+
+def to_csv(dict):
+    #file = open('test.csv','w')
+    #for item in dict:
+    #    file.write(','.join(item))
+    #    file.write('\n')
+    #file.close()
+    with open('mycsvfile.csv', 'wb') as f:
+        for item in dict:
+            w = csv.DictWriter(f, item.keys())
+            w.writerow(item)
+    f.close()
+
+def read_csv():
+    with open('mycsvfile.csv', 'rb') as f:
+        reader = csv.reader(f)
+        lst=(list(reader))
+    f.close()
+    return lst
+
+def get_cpus(model):
+    with open('models.csv', 'rb') as f:
+        reader = csv.reader(f)
+        lst=(list(reader))
+    f.close()
+    for row in lst:
+        if row[0] == model:
+            return row[1]
+
+def get_ram(model):
+    with open('models.csv', 'rb') as f:
+        reader = csv.reader(f)
+        lst=(list(reader))
+    f.close()
+    for row in lst:
+        if row[0] == model:
+            return row[2]
+
+#def get_disk(project_id, zone, instance):
 
 
 if __name__ == '__main__':
