@@ -81,6 +81,45 @@ def monitoring_call(project_id, metric, instance_name):
         .align(Aligner.ALIGN_MEAN, minutes=5) #TODO average every 5 min
     return query.as_dataframe()
 
+ def to_csv(dict):
+        # file = open('test.csv','w')
+        # for item in dict:
+        #    file.write(','.join(item))
+        #    file.write('\n')
+        # file.close()
+    with open('mycsvfile.csv', 'wb') as f:
+        for item in dict:
+            w = csv.DictWriter(f, item.keys())
+            w.writerow(item)
+    f.close()
+
+def read_csv():
+    with open('mycsvfile.csv', 'rb') as f:
+        reader = csv.reader(f)
+        lst = (list(reader))
+    f.close()
+    return lst
+
+def get_cpus(model):
+    with open('models.csv', 'rb') as f:
+        reader = csv.reader(f)
+        lst = (list(reader))
+    f.close()
+    for row in lst:
+        if row[0] == model:
+            return row[1]
+
+def get_ram(model):
+    with open('models.csv', 'rb') as f:
+        reader = csv.reader(f)
+        lst = (list(reader))
+    f.close()
+    for row in lst:
+        if row[0] == model:
+            return row[2]
+
+                # def get_disk(project_id, zone, instance):
+
 
 if __name__ == '__main__':
     main()
