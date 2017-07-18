@@ -4,8 +4,9 @@ from googleapiclient import discovery
 import google.auth
 import os
 import pandas
+from datetime import *
 import json
-from pprint import pprint
+
 
 
 
@@ -28,6 +29,18 @@ instance_metrics = {'cpu utilization': 'instance/cpu/utilization',  # concatenat
                     'sent packets': 'instance/network/sent_packets_count'}
 
 
+class UTC(tzinfo):
+    """UTC"""
+    def utcoffset(self, dt):
+        return timedelta(0)
+
+    def tzname(self, dt):
+        return "UTC"
+
+    def dst(self, dt):
+        return timedelta(0)
+
+
 def get_monitoring_client(project):
     return monitoring.Client(project=project, credentials=credentials)
 
@@ -36,25 +49,29 @@ def main():
     data = {} # TODO dump project list back into data dict
     data['projects'] = api_call(resource_manager.projects(), 'projects', [])
     print "Found %d projects" % len(data['projects'])
+
     for project in data['projects']:  # for each project in the list of project dictionaries :
         project['instances'] = []  # add another key : value pair into project dictionary
         project_id = project['projectId']
-
         all_zones = api_call(compute.zones(), 'items', {'project': project_id})
         print "Found %d zones" % len(all_zones)
+
         for zone in all_zones:  # for each zone in list of zone dictionaries :
             zone_name = zone['name']
             current_instances = api_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
             if current_instances is not None and len(current_instances) > 0:
                 project['instances'].extend(current_instances)
         print "Found %d instances" % len(project['instances'])
+        project['metrics'] = []
         for instance in project['instances']:  # TODO Associate metrics with respective instance
-
             instance['metrics'] = []
             for key in sorted(instance_metrics):
                 instance['metrics'].append(monitoring_call(project_id, key, instance['name']))
-            project['metrics'] = pandas.concat(instance['metrics'], axis=1)
-           # project['metrics'].to_csv('out.csv')  #TODO Add column headers for each data set
+            instance_df = (pandas.concat(instance['metrics'], axis=1))
+            project['metrics'].append(instance_df)
+        metric_csv = pandas.concat(project['metrics'],axis=1)
+        metric_csv.to_csv('out.csv')
+        #TODO Add column headers for each data set
                                                   #TODO Set end time interval to when the program executes
 
 
@@ -76,22 +93,24 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
 def monitoring_call(project_id, metric, instance_name):
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
-    query = client.query(METRIC, hours=24)\
+    midnight_utc = time(0, tzinfo=UTC()) #because time 0 = midnight yesterday
+    yesterday_midnight_utc = datetime.combine(date.today(), midnight_utc)
+    query = client.query(METRIC, hours=24, end_time=yesterday_midnight_utc)\
         .select_metrics(instance_name=instance_name)\
-        .align(Aligner.ALIGN_MEAN, minutes=5) #TODO average every 5 min
-    return query.as_dataframe()
+        .align(Aligner.ALIGN_MEAN, minutes=5) #TODO add ability to specify start time
+    return query.as_dataframe(label= "instance_name")
 
- def to_csv(dict):
-        # file = open('test.csv','w')
-        # for item in dict:
-        #    file.write(','.join(item))
-        #    file.write('\n')
-        # file.close()
-    with open('mycsvfile.csv', 'wb') as f:
-        for item in dict:
-            w = csv.DictWriter(f, item.keys())
-            w.writerow(item)
-    f.close()
+def to_csv(dict):
+       # file = open('test.csv','w')
+       # for item in dict:
+       #    file.write(','.join(item))
+       #    file.write('\n')
+       # file.close()
+   with open('mycsvfile.csv', 'wb') as f:
+       for item in dict:
+           w = csv.DictWriter(f, item.keys())
+           w.writerow(item)
+   f.close()
 
 def read_csv():
     with open('mycsvfile.csv', 'rb') as f:
