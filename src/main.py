@@ -5,7 +5,8 @@ import google.auth
 import os
 import pandas
 from datetime import *
-import json
+import csv
+
 
 
 
@@ -46,6 +47,7 @@ def get_monitoring_client(project):
 
 
 def main():
+    specs = []
     data = {} # TODO dump project list back into data dict
     data['projects'] = api_call(resource_manager.projects(), 'projects', [])
     print "Found %d projects" % len(data['projects'])
@@ -61,10 +63,31 @@ def main():
             current_instances = api_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
             if current_instances is not None and len(current_instances) > 0:
                 project['instances'].extend(current_instances)
+                count = 0
+                gigs = []
+                for i in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):
+                    #print i
+                    gigs.append(i['sizeGb'])
+                for i in current_instances:
+                    #print i
+                    #print(api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}))
+                    instance_name = (i['name'])
+                    cpuType = i['cpuPlatform']
+                    networkIP = i['networkInterfaces'][0]['networkIP']
+                    machineurl = i['machineType']
+                    id = i['id']
+                    segments = machineurl.split('/')
+                    machineType = segments[len(segments) - 1]
+                    #print(compute.disks().list(project=project_id, zone=zone_name).execute()['items'][])
+                        #disk = item['name']+' '+item['sizeGb']
+                    print compute.instances().get(project=project_id, zone=zone_name, instance=instance_name).execute()['networkInterfaces']
+                    specs.append([id,project_id,zone_name,instance_name,machineType,cpuType,str(get_cpus(machineType)),str(get_ram(machineType)),gigs[count],networkIP])
+                    count+=1
         print "Found %d instances" % len(project['instances'])
         project['metrics'] = []
         for instance in project['instances']:  # TODO Associate metrics with respective instance
             instance['metrics'] = []
+
             for key in sorted(instance_metrics):
                 instance['metrics'].append(monitoring_call(project_id, key, instance['name']))
             instance_df = (pandas.concat(instance['metrics'], axis=1))
@@ -72,7 +95,14 @@ def main():
         metric_csv = pandas.concat(project['metrics'],axis=1)
         metric_csv.to_csv('out.csv')
         #TODO Add column headers for each data set
+
                                                   #TODO Set end time interval to when the program executes
+    #to_csv_dict([{'ya':'yahoo','yay':'yep'},{'good':'cool','great':'i know','sure':'really'},{'good':'cool','great':'i know','sure':'really'}],'mycsvfile.csv')
+    #to_csv_list([['cow','bird'],['monkey','horse','fish']],'mycsvfile.csv')
+    #print read_csv('mycsvfile.csv')
+    #print get_ram('n1-highcpu-2')
+    #pprint(specs)
+    to_csv_list(specs,'specs.csv')
 
 
 def api_call(base, key, args):  # generic method for pulling relevant data from api response
@@ -97,45 +127,58 @@ def monitoring_call(project_id, metric, instance_name):
     yesterday_midnight_utc = datetime.combine(date.today(), midnight_utc)
     query = client.query(METRIC, hours=24, end_time=yesterday_midnight_utc)\
         .select_metrics(instance_name=instance_name)\
-        .align(Aligner.ALIGN_MEAN, minutes=5) #TODO add ability to specify start time
-    return query.as_dataframe(label= "instance_name")
+        .align(Aligner.ALIGN_MEAN, minutes=5) #TODO average every 5 min
+    return query.as_dataframe()
 
-def to_csv(dict):
-       # file = open('test.csv','w')
-       # for item in dict:
-       #    file.write(','.join(item))
-       #    file.write('\n')
-       # file.close()
-   with open('mycsvfile.csv', 'wb') as f:
-       for item in dict:
-           w = csv.DictWriter(f, item.keys())
-           w.writerow(item)
-   f.close()
+def to_csv_dict(dict,file):
+        # file = open('test.csv','w')
+        # for item in dict:
+        #    file.write(','.join(item))
+        #    file.write('\n')
+        # file.close()
+    with open(file, 'wb') as f:
+        for item in dict:
+            w = csv.DictWriter(f, item.keys())
+            w.writerow(item)
+    f.close()0
 
-def read_csv():
-    with open('mycsvfile.csv', 'rb') as f:
+def to_csv_list(lst,file):
+    with open(file, 'wb') as f:
+        f.write('instance id:,project:,zone:,instance:,model:,cpu type:,cpus:,memory(GB):,storage(GB):,network ip:\n')
+        for item in lst:
+            f.write(','.join(item)+'\n')
+    f.close()
+
+def read_csv(file):
+    with open(file, 'rb') as f:
         reader = csv.reader(f)
         lst = (list(reader))
     f.close()
     return lst
 
 def get_cpus(model):
-    with open('models.csv', 'rb') as f:
-        reader = csv.reader(f)
-        lst = (list(reader))
-    f.close()
-    for row in lst:
-        if row[0] == model:
-            return row[1]
-
-def get_ram(model):
-    with open('models.csv', 'rb') as f:
+    if model.split('-')[0] == 'custom':
+        return model.split('-')[1]
+    with open('gcp_models.csv', 'rb') as f:
         reader = csv.reader(f)
         lst = (list(reader))
     f.close()
     for row in lst:
         if row[0] == model:
             return row[2]
+    return 'n/a'
+
+def get_ram(model):
+    if model.split('-')[0] == 'custom':
+        return float(model.split('-')[2])/1024
+    with open('gcp_models.csv', 'rb') as f:
+        reader = csv.reader(f)
+        lst = (list(reader))
+    f.close()
+    for row in lst:
+        if row[0] == model:
+            return row[3]
+    return 'n/a'
 
                 # def get_disk(project_id, zone, instance):
 
