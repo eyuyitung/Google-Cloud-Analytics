@@ -1,18 +1,19 @@
 #start timer before anything else
-print 'importing assets'
+print 'Importing assets ...'
 import timeit
 start_time=timeit.default_timer()
 
 from google.cloud import monitoring
 from google.cloud.monitoring import Aligner
 from googleapiclient import discovery
+from pprint import pprint
 import google.auth
 import os
 import pandas
 from datetime import *
 import csv
 
-print 'retrieving credentials'
+print 'Retrieving credentials ...'
 project_root = os.path.abspath(os.path.join(__file__ ,"../.."))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + "google-credentials.json"
 
@@ -31,6 +32,12 @@ instance_metrics = {'cpu utilization': 'instance/cpu/utilization',  # concatenat
                     'sent bytes': 'instance/network/sent_bytes_count',
                     'sent packets': 'instance/network/sent_packets_count'}
 
+with open(project_root + os.path.sep + 'gcp_models.csv', 'rb') as f:
+    reader = csv.reader(f)
+    models_list = (list(reader))
+f.close()
+
+models = []
 
 class UTC(tzinfo):
     """UTC"""
@@ -59,9 +66,14 @@ def main():
     for project in data['projects']:  # for each project in the list of project dictionaries :
         project['instances'] = []  # add another key : value pair into project dictionary
         project_id = project['projectId']
+        m = api_call(compute.machineTypes(), 'items', {'project': project_id, 'zone': 'us-central1-a'})
+        for model in m:
+            models.append([model['name'],model['guestCpus'],model['memoryMb']])
+        #pprint (api_call(compute.machineTypes(), 'items', {'project': project_id, 'zone': 'us-central1-a'}))
         all_zones = api_call(compute.zones(), 'items', {'project': project_id})
         print "Found %d zones" % len(all_zones)
         disk_size = []
+        print 'Loading instances ...'
         for zone in all_zones:  # for each zone in list of zone dictionaries :
             zone_name = zone['name']
             current_instances = api_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
@@ -73,7 +85,8 @@ def main():
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):#loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
                 for i in current_instances:#loop through all instances to create lists of their configs
-                    print i['name'],'found, retrieving configurations'
+                    zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
+                    zone_dep = zone_name.split('-')[2]
                     creation_date = i['creationTimestamp']
                     instance_name = (i['name'])
                     status = i['status']
@@ -83,34 +96,23 @@ def main():
                     id = i['id']
                     segments = machineurl.split('/')
                     machine_type = segments[len(segments) - 1]
-                    specs.append([networkIP,str(get_cpus(machine_type)),str(get_cpus(machine_type)),'1','1','',
-                                  '',str(get_ram(machine_type)),'','Google',machine_type,id])
-                    #specs.append([id, project_id, zone_name, instance_name, status, machine_type, cpu_type,
-                    #str(get_cpus(machine_type)), str(get_ram(machine_type)), disk_size[disk_index], networkIP])
-                    atts.append([networkIP,'','',id,machine_type,'',networkIP,'',creation_date,'','',''])
+                    cpus = get_cpus(machine_type)
+                    ram = get_ram(machine_type)
+                    specs.append([instance_name,str(cpus),str(cpus),'1','1','',
+                                  '',str(ram),'Google',machine_type,id,cpu_type])
+                    atts.append([instance_name,id,networkIP,creation_date,zone_loc,zone_dep,disk_size[disk_index]])
                     disk_index+=1
 
     #collect metrics for each instance, append to dataframe, and merge all dataframes to one csv
         print "Found %d instances" % len(project['instances'])
         project['metrics'] = []
-        for instance in project['instances']:  # TODO Associate metrics with respective instance
-            instance['metrics'] = []
-            for key in sorted(instance_metrics):
-                instance['metrics'].append(monitoring_call(project_id, key, instance['name']))
-                print instance['name'], key,'retrieved'
-            instance_df = (pandas.concat(instance['metrics'], axis=1))
-            project['metrics'].append(instance_df)
-        print "done retrieving"
-        metric_csv = pandas.concat(project['metrics'],axis=1)
-        print"done concatenating"
-        metric_csv.to_csv(project_root + os.path.sep + 'out.csv')
     to_csv_list(specs, 'gcp_config.csv','a')
     to_csv_list(atts, 'attributes.csv','b')
 
     #display the final amount of time taken
     end_time = timeit.default_timer()
     program_time = end_time-start_time
-    print 'done in',int(program_time), 'seconds'
+    print 'Finished in',int(program_time), 'seconds'
         #TODO Add column headers for each data set
         #TODO Set end time interval to when the program executes
 
@@ -139,47 +141,31 @@ def monitoring_call(project_id, metric, instance_name):  #
     return query.as_dataframe()
 
 #print ant list of lists to a csv file
-#def to_csv_list(lst,file):
-#    with open(project_root + os.path.sep + file, 'wb') as f:
-#        f.write('instance id:,project:,zone:,instance:,status:,model:,cpu type:,cpus:,memory(GB):,storage(GB):,network ip:\n')
-#        for item in lst:
-#            f.write(','.join(item)+'\n')
-#    f.close()
-
 def to_csv_list(lst,file,type):
     with open(project_root + os.path.sep + file, 'wb') as f:
         if type == 'a':
-            f.write('host_name,HW Total CPUs,HW Total Physical CPUs,HW Cores Per CPU,HW Threads Per Core,'
-                    'BM CINT2006 Rate,HW CPU Speed,HW Total Memory,OS Name,HW Manufacturer,HW Model,HW Serial Number\n')
+            f.write('host_name,HW Total CPUs,HW Total Physical CPUs,HW Cores Per CPU,HW Threads Per Core,BM CINT2006 Rate,'
+                    'HW CPU Speed,HW Total Memory,HW Manufacturer,HW Model,HW Serial Number,HW CPU Architecture\n')
         if type == 'b':
-            f.write('host_name,PublicIP,PublicDNSName,InstanceID,InstanceType,PrivateDNSName,PrivateIP,OS,LaunchTime,SecurityGroups,Placement,Tags\n')
+            f.write('host_name,Instance ID,Instance IP,'
+                    'Launch Time,Location,Department,PS Capacity\n')
         for item in lst:
             f.write(','.join(item)+'\n')
     f.close()
 
-#retrieve number of cpus from models file
 def get_cpus(model):
     if model.split('-')[0] == 'custom':
         return model.split('-')[1]
-    with open(project_root + os.path.sep +'gcp_models.csv', 'rb') as f:
-        reader = csv.reader(f)
-        lst = (list(reader))
-    f.close()
-    for row in lst:
+    for row in models:
         if row[0] == model:
-            return row[2]
+            return row[1]
 
-#retrieve amount of ram from models file
 def get_ram(model):
     if model.split('-')[0] == 'custom':
         return float(model.split('-')[2])
-    with open(project_root + os.path.sep +'gcp_models.csv', 'rb') as f:
-        reader = csv.reader(f)
-        lst = (list(reader))
-    f.close()
-    for row in lst:
+    for row in models:
         if row[0] == model:
-            return int(float(row[3])*1024)
+            return row[2]
 
 
 if __name__ == '__main__':
