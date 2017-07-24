@@ -74,7 +74,7 @@ def main():
         all_zones = api_call(compute.zones(), 'items', {'project': project_id})
         print "Found %d zones" % len(all_zones)
         disk_size = []
-        instance_id = []
+        name_instance = []
         print 'Loading instances ...'
         for zone in all_zones:  # for each zone in list of zone dictionaries :
             zone_name = zone['name']
@@ -107,13 +107,13 @@ def main():
                     atts.append([instance_name, id, networkIP, creation_date, zone_loc, zone_dep, disk_size[disk_index]])
                     disk_index += 1
                     if i['status'] != 'TERMINATED':
-                        instance_id.append(id)
+                        name_instance.append(instance_name)
         print "Found %d instances" % len(project['instances'])
         key_metric = []
         for key in sorted(instance_metrics):
             df = (monitoring_call(project_id, key))
             df.index.name = 'Datetime'
-            if df.shape[1] > len(instance_id):
+            if df.shape[1] > len(name_instance):
                 df = df.groupby(axis=1, level=0).sum()
             key_label = [key] * df.shape[1]
             cols = list(zip(df.columns, key_label))
@@ -124,7 +124,7 @@ def main():
         grouped_instances = [gb.get_group(x) for x in gb.groups]
         for idx, df in enumerate(grouped_instances):
             df.columns = df.columns.droplevel()
-        final_list = concat(grouped_instances,keys=sorted(instance_id), names=['host_name'])
+        final_list = concat(grouped_instances,keys=sorted(name_instance), names=['host_name'])
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'out.csv')
     to_csv_list(specs, 'gcp_config.csv','a')
     to_csv_list(atts, 'attributes.csv','b')
@@ -155,7 +155,7 @@ def monitoring_call(project_id, metric):  #
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
     query = client.query(METRIC, hours=24, end_time=yesterday_midnight_utc)\
         .align(Aligner.ALIGN_MEAN, minutes=5)
-    return query.as_dataframe(labels=['instance_id'])
+    return query.as_dataframe(labels=['instance_name'])
 
 
 # print ant list of lists to a csv file
