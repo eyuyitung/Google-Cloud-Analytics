@@ -3,7 +3,7 @@ from google.cloud.monitoring import Aligner
 from googleapiclient import discovery
 import google.auth
 import os
-import pandas
+from pandas import *
 from datetime import *
 import csv
 
@@ -15,15 +15,15 @@ credentials, project = google.auth.default()
 resource_manager = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
 compute = discovery.build('compute', 'v1', credentials=credentials)
 
-instance_metrics = {'cpu utilization': 'instance/cpu/utilization',  # concatenates with compute api base url
-                    'disk read bytes': 'instance/disk/read_bytes_count',
-                    'disk read operations': 'instance/disk/read_ops_count',
-                    'disk write bytes': 'instance/disk/write_bytes_count',
-                    'disk write operations': 'instance/disk/write_ops_count',
-                    'received bytes': 'instance/network/received_bytes_count',
-                    'received packets': 'instance/network/received_packets_count',
-                    'sent bytes': 'instance/network/sent_bytes_count',
-                    'sent packets': 'instance/network/sent_packets_count'}
+instance_metrics = {'CPU Utilization': 'instance/cpu/utilization',  # concatenates with compute api base url
+                    'Raw Disk Read Utilization': 'instance/disk/read_bytes_count',
+                    'Disk Read Operations': 'instance/disk/read_ops_count',
+                    'Raw Disk Write Utilization': 'instance/disk/write_bytes_count',
+                    'Disk Write Operations': 'instance/disk/write_ops_count',
+                    'Raw Net Recieved Utilization': 'instance/network/received_bytes_count',
+                    'Network Packets Recieved': 'instance/network/received_packets_count',
+                    'Raw Net Sent Utilization': 'instance/network/sent_bytes_count',
+                    'Network Packets Sent': 'instance/network/sent_packets_count'}
 
 
 class UTC(tzinfo):
@@ -37,6 +37,8 @@ class UTC(tzinfo):
     def dst(self, dt):
         return timedelta(0)
 
+
+yesterday_midnight_utc = datetime.combine(date.today(), time(0, tzinfo=UTC())) #because time 0 = midnight yesterday
 
 def get_monitoring_client(project):
     return monitoring.Client(project=project, credentials=credentials)
@@ -54,14 +56,18 @@ def main():
         all_zones = api_call(compute.zones(), 'items', {'project': project_id})
         print "Found %d zones" % len(all_zones)
         disk_size = []
+        instance_id = []
         for zone in all_zones:  # for each zone in list of zone dictionaries :
             zone_name = zone['name']
             current_instances = api_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
             if current_instances is not None and len(current_instances) > 0:
                 project['instances'].extend(current_instances)
+
                 disk_index = 0
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):
                     disk_size.append(disk['sizeGb'])
+                    print disk['name'] + 'disk'
+
                 for i in current_instances:
                     instance_name = (i['name'])
                     cpu_type = i['cpuPlatform']
@@ -71,21 +77,33 @@ def main():
                     segments = machineurl.split('/')
                     machine_type = segments[len(segments) - 1]
                     specs.append([id, project_id, zone_name, instance_name, machine_type, cpu_type,
-                    str(get_cpus(machine_type)), str(get_ram(machine_type)), disk_size[disk_index], networkIP])
-                    disk_index+=1
+                        str(get_cpus(machine_type)), str(get_ram(machine_type)), disk_size[disk_index], networkIP])
+                    disk_index += 1
+                    print i['name'] + 'specs'
+                    if i['status'] != 'TERMINATED':
+                        instance_id.append(id)
         print "Found %d instances" % len(project['instances'])
-        project['metrics'] = []
-        for instance in project['instances']:  # TODO Associate metrics with respective instance
-            instance['metrics'] = []
-            for key in sorted(instance_metrics):
-                instance['metrics'].append(monitoring_call(project_id, key, instance['name']))
-            instance_df = (pandas.concat(instance['metrics'], axis=1))
-            project['metrics'].append(instance_df)
-        metric_csv = pandas.concat(project['metrics'],axis=1)
-        metric_csv.to_csv('out.csv')
-    to_csv_list(specs, 'specs.csv')
-        #TODO Add column headers for each data set
-        #TODO Set end time interval to when the program executes
+        key_metric = []
+        for key in sorted(instance_metrics):  # TODO Associate metrics with respective instance
+            df = (monitoring_call(project_id, key))
+            df.index.name = 'Datetime'
+            if df.shape[1] > len(instance_id):
+                df = df.groupby(axis=1, level=0).sum()
+            key_label = [key] * df.shape[1]
+            cols = list(zip(df.columns, key_label))
+            df.columns = MultiIndex.from_tuples(cols)
+            key_metric.append(df)
+        sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)
+        gb = sorted_metrics.groupby(axis=1, level=0)
+        grouped_instances = [gb.get_group(x) for x in gb.groups]
+        for idx, df in enumerate(grouped_instances):
+            df.columns = df.columns.droplevel()
+        final_list = concat(grouped_instances,keys=sorted(instance_id), names=['host_name'])
+        final_list.to_csv(path_or_buf=project_root + os.path.sep + 'out.csv')
+
+
+    to_csv_list(specs,project_root + os.path.sep +  'specs.csv')
+
 
 
 def api_call(base, key, args):  # generic method for pulling relevant data from api response
@@ -103,47 +121,45 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
     return export
 
 
-def monitoring_call(project_id, metric, instance_name):  #
+def monitoring_call(project_id, metric):  #
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
-    midnight_utc = time(0, tzinfo=UTC()) #because time 0 = midnight yesterday
-    yesterday_midnight_utc = datetime.combine(date.today(), midnight_utc)
     query = client.query(METRIC, hours=24, end_time=yesterday_midnight_utc)\
-        .select_metrics(instance_name=instance_name)\
         .align(Aligner.ALIGN_MEAN, minutes=5)
-    return query.as_dataframe()
-
+    return query.as_dataframe(labels=['instance_id'])
 
 def to_csv_list(lst,file):
-    with open(file, 'wb') as f:
+    with open(project_root + os.path.sep + file, 'wb') as f:
         f.write('instance id:,project:,zone:,instance:,model:,cpu type:,cpus:,memory(GB):,storage(GB):,network ip:\n')
         for item in lst:
             f.write(','.join(item)+'\n')
     f.close()
 
 
+
 def get_cpus(model):
     if model.split('-')[0] == 'custom':
         return model.split('-')[1]
-    with open('gcp_models.csv', 'rb') as f:
+    with open(project_root + os.path.sep + 'gcp_models.csv', 'rb') as f:
         reader = csv.reader(f)
         lst = (list(reader))
     f.close()
     for row in lst:
         if row[0] == model:
             return row[2]
-
+    return 'n/a'
 
 def get_ram(model):
     if model.split('-')[0] == 'custom':
         return float(model.split('-')[2])/1024
-    with open('gcp_models.csv', 'rb') as f:
+    with open(project_root + os.path.sep + 'gcp_models.csv', 'rb') as f:
         reader = csv.reader(f)
         lst = (list(reader))
     f.close()
     for row in lst:
         if row[0] == model:
             return row[3]
+
 
 
 if __name__ == '__main__':
