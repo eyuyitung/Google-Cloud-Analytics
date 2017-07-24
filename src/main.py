@@ -124,8 +124,9 @@ def main():
         grouped_instances = [gb.get_group(x) for x in gb.groups]
         for idx, df in enumerate(grouped_instances):
             df.columns = df.columns.droplevel()
-        final_list = concat(grouped_instances,keys=sorted(name_instance), names=['host_name'])
-        final_list.to_csv(path_or_buf=project_root + os.path.sep + 'out.csv')
+        final_list = concat(grouped_instances,keys=sorted(instance_id), names=['host_name'])
+        final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
+
     to_csv_list(specs, 'gcp_config.csv','a')
     to_csv_list(atts, 'attributes.csv','b')
 

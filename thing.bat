@@ -9,6 +9,7 @@ if errorlevel 1 (GOTO END)
 ECHO  - Step 2 - GCP Config
 move %fpath%gcp_config.csv %fpath%conf\gcp_config.csv
 move %fpath%attributes.csv %fpath%conf\attributes.csv
+move %fpath%workload.csv %fpath%conf\workload.csv
 if errorlevel 1 (GOTO END)
 
 ECHO  - Step 3 - Creating Manifest
