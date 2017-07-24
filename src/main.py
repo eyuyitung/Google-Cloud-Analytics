@@ -122,9 +122,9 @@ def main():
         sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)
         gb = sorted_metrics.groupby(axis=1, level=0)
         grouped_instances = [gb.get_group(x) for x in gb.groups]
-        for idx, df in enumerate(grouped_instances):
+        for df in grouped_instances:
             df.columns = df.columns.droplevel()
-        final_list = concat(grouped_instances,keys=sorted(instance_id), names=['host_name'])
+        final_list = concat(grouped_instances,keys=sorted(name_instance), names=['host_name'])
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
 
     to_csv_list(specs, 'gcp_config.csv','a')
