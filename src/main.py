@@ -104,8 +104,8 @@ def main():
         metric_csv = pandas.concat(project['metrics'],axis=1)
         print"done concatenating"
         metric_csv.to_csv(project_root + os.path.sep + 'out.csv')
-    to_csv_list(specs, 'gcp_config.csv')
-    to_csv_list(atts, 'attributes.csv')
+    to_csv_list(specs, 'gcp_config.csv','a')
+    to_csv_list(atts, 'attributes.csv','b')
 
     #display the final amount of time taken
     end_time = timeit.default_timer()
@@ -146,12 +146,12 @@ def monitoring_call(project_id, metric, instance_name):  #
 #            f.write(','.join(item)+'\n')
 #    f.close()
 
-def to_csv_list(lst,file):
+def to_csv_list(lst,file,type):
     with open(project_root + os.path.sep + file, 'wb') as f:
-        if file is 'gcp_config.csv':
+        if type == 'a':
             f.write('host_name,HW Total CPUs,HW Total Physical CPUs,HW Cores Per CPU,HW Threads Per Core,'
                     'BM CINT2006 Rate,HW CPU Speed,HW Total Memory,OS Name,HW Manufacturer,HW Model,HW Serial Number\n')
-        else:
+        if type == 'b':
             f.write('host_name,PublicIP,PublicDNSName,InstanceID,InstanceType,PrivateDNSName,PrivateIP,OS,LaunchTime,SecurityGroups,Placement,Tags\n')
         for item in lst:
             f.write(','.join(item)+'\n')
