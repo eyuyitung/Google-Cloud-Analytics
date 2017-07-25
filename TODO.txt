@@ -1,0 +1,11 @@
+TODORO
+run AWS discovery and see attributes
+add Virtual Environment attributes
+	Virtual Technology = Google Cloud Platform
+	Virtual Domain = Project ID
+	Virtual Datacenter = Zone Location
+	Virtual Cluster = Zone (Full)
+	(remove location and department)
+add Power Status attribute
+add a group attribute (ex. auto-scaling-group-1)
+add Disk & Network I/O Totals
