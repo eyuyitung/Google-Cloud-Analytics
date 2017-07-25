@@ -1,9 +1,15 @@
 ECHO OFF
 
+
+rem/////////////////////////// CHANGE TO DESIRED SAMPLE LENGTH ////////////////////////////////
+set HOURS=24
+
+
+
 set fpath=%~sdp0
 
 ECHO  - Step 1 - GCP Discovery
-python %fpath%src\main.py
+python %fpath%src\main.py -t %HOURS%
 if errorlevel 1 (GOTO END)
 
 ECHO  - Step 2 - GCP Config

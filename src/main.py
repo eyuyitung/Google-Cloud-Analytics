@@ -1,7 +1,8 @@
 #start timer before anything else
-print 'Importing assets ...'
 import timeit
 start_time=timeit.default_timer()
+
+print 'Importing assets ...'
 
 from google.cloud import monitoring
 from google.cloud.monitoring import Aligner
@@ -12,6 +13,7 @@ import os
 from pandas import *
 from datetime import *
 import csv
+import argparse
 
 print 'Retrieving credentials ...'
 project_root = os.path.abspath(os.path.join(__file__ ,"../.."))
@@ -37,6 +39,19 @@ with open(project_root + os.path.sep + 'gcp_models.csv', 'rb') as f:
     models_list = (list(reader))
 f.close()
 
+parser = argparse.ArgumentParser(description='Process some integers.')
+parser.add_argument('-t', dest = 'hours',
+                    help='amount of hours to receive data from')
+args = parser.parse_args()
+hours = args.hours
+if hours:
+    hours = int(args.hours)
+else:
+    hours = 24
+if hours > 168:
+    print 'only 168 hours or less of metrics can be collected (retreiving 168)'
+    hours = 168
+
 models = []
 
 class UTC(tzinfo):
@@ -49,9 +64,6 @@ class UTC(tzinfo):
 
     def dst(self, dt):
         return timedelta(0)
-
-midnight_utc = time(0, tzinfo=UTC()) #because time 0 = midnight yesterday
-yesterday_midnight_utc = datetime.combine(date.today(), midnight_utc)
 
 yesterday_midnight_utc = datetime.combine(date.today(), time(0, tzinfo=UTC())) #because time 0 = midnight yesterday
 
@@ -86,7 +98,6 @@ def main():
                 disk_index = 0
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
-                    print disk['name'] + 'disk'
                 for i in current_instances:  # loop through all instances to create lists of their configs
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     zone_dep = zone_name.split('-')[2]
@@ -108,12 +119,11 @@ def main():
                     if i['status'] != 'TERMINATED':
                         name_instance.append(instance_name)
 
-        print "Found %d instances" % len(project['instances'])
+        print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']),hours)
         key_metric = []
         for key in sorted(instance_metrics):
             df = (monitoring_call(project_id, key))
             print key, "done"
-            #df.index.name = 'Datetime'
             if df.shape[1] > len(name_instance): #  if instance has more than 1 value for metric, finds aggergate
                 df = df.groupby(axis=1, level=0).sum()
             if key == 'CPU Utilization':
@@ -160,7 +170,7 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
 def monitoring_call(project_id, metric):  #
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
-    query = client.query(METRIC, hours=24, end_time=yesterday_midnight_utc)\
+    query = client.query(METRIC, hours=hours, end_time=yesterday_midnight_utc)\
         .align(Aligner.ALIGN_MEAN, minutes=5)
     return query.as_dataframe(labels=['instance_name'])
 
