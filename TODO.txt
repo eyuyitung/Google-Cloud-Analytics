@@ -3,4 +3,5 @@ run AWS discovery and see attributes
 add Power Status attribute
 add a group attribute (ex. auto-scaling-group-1)
 add Disk & Network I/O Totals
+
 remove inactive instances
