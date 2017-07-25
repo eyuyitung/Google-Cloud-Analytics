@@ -91,7 +91,6 @@ def main():
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     zone_dep = zone_name.split('-')[2]
                     creation_date = i['creationTimestamp']
-
                     instance_name = (i['name'])
                     status = i['status']
                     cpu_type = i['cpuPlatform']
@@ -108,28 +107,35 @@ def main():
                     disk_index += 1
                     if i['status'] != 'TERMINATED':
                         name_instance.append(instance_name)
+
         print "Found %d instances" % len(project['instances'])
         key_metric = []
         for key in sorted(instance_metrics):
             df = (monitoring_call(project_id, key))
-            df.index.name = 'Datetime'
-            if df.shape[1] > len(name_instance):
+            print key, "done"
+            #df.index.name = 'Datetime'
+            if df.shape[1] > len(name_instance): #  if instance has more than 1 value for metric, finds aggergate
                 df = df.groupby(axis=1, level=0).sum()
+            if key == 'CPU Utilization':
+                df *= 100
             key_label = [key] * df.shape[1]
             cols = list(zip(df.columns, key_label))
             df.columns = MultiIndex.from_tuples(cols)
             key_metric.append(df)
+
         sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)
         gb = sorted_metrics.groupby(axis=1, level=0)
-        grouped_instances = [gb.get_group(x) for x in gb.groups]
+        grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]
+        dict_instances = {}
         for df in grouped_instances:
+            dict_instances[list(df)[0][0]] = df
             df.columns = df.columns.droplevel()
-        final_list = concat(grouped_instances,keys=sorted(name_instance), names=['host_name'])
+
+        final_list = concat(dict_instances, names=['host_name', 'Datetime'])
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
 
     to_csv_list(specs, 'gcp_config.csv','a')
     to_csv_list(atts, 'attributes.csv','b')
-
     # display the final amount of time taken
     end_time = timeit.default_timer()
     program_time = end_time-start_time
