@@ -2,3 +2,6 @@ google-credentials.json
 *.json
 out.csv
 specs.csv
+repo/
+.idea/
+conf/
