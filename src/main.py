@@ -26,13 +26,23 @@ compute = discovery.build('compute', 'v1', credentials=credentials)
 
 instance_metrics = {'CPU Utilization': 'instance/cpu/utilization',  # concatenates with compute api base url
                     'Raw Disk Read Utilization': 'instance/disk/read_bytes_count',
-                    'Disk Read Operations': 'instance/disk/read_ops_count',
                     'Raw Disk Write Utilization': 'instance/disk/write_bytes_count',
+                    'Disk Read Operations': 'instance/disk/read_ops_count',
                     'Disk Write Operations': 'instance/disk/write_ops_count',
                     'Raw Net Received Utilization': 'instance/network/received_bytes_count',
-                    'Network Packets Received': 'instance/network/received_packets_count',
                     'Raw Net Sent Utilization': 'instance/network/sent_bytes_count',
+                    'Network Packets Received': 'instance/network/received_packets_count',
                     'Network Packets Sent': 'instance/network/sent_packets_count'}
+
+total_metrics = {'Raw Disk Utilization': ('Disk', 'Utilization'),
+                 'Disk Operations': ('Disk', 'Operations'),
+                 'Raw Net Utilization': ('Net', 'Utilization'),
+                 'Network Packets': ('Network', 'Packets')}
+
+with open(project_root + os.path.sep + 'gcp_models.csv', 'rb') as f:
+    reader = csv.reader(f)
+    models_list = (list(reader))
+f.close()
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('-t', dest = 'hours',
@@ -145,15 +155,28 @@ def main():
                     if i['status'] != 'TERMINATED':
                         name_instance.append(instance_name)
 
-        print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']),hours)
+        print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
+        dict_metric = {}
         key_metric = []
         for key in sorted(instance_metrics):
             df = (monitoring_call(project_id, key))
             print key, "done"
-            if df.shape[1] > len(name_instance): #  if instance has more than 1 value for metric, finds aggergate
+            if df.shape[1] > len(name_instance):  # if instance has more than 1 value for metric, finds aggregate
                 df = df.groupby(axis=1, level=0).sum()
             if key == 'CPU Utilization':
                 df *= 100
+
+            dict_metric[key] = df
+
+        for name in total_metrics:
+            total = []
+            for key in dict_metric:
+                if all(x in key for x in name):
+                    total.append(dict_metric[key])
+            dict_metric[name] = total[0].add(total[1], fill_value=0, level=0)
+
+        for key in dict_metric:
+            df = dict_metric[key]
             key_label = [key] * df.shape[1]
             cols = list(zip(df.columns, key_label))
             df.columns = MultiIndex.from_tuples(cols)
@@ -193,11 +216,11 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
     return export
 
 
-def monitoring_call(project_id, metric):  #
+def monitoring_call(project_id, metric):  #hours = global variable parsed from discovery.bat
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
-    query = client.query(METRIC, hours=hours, end_time=yesterday_midnight_utc)\
-        .align(Aligner.ALIGN_MEAN, minutes=5)
+    query = client.query(METRIC, hours=hours)\
+        .align(Aligner.ALIGN_MEAN, minutes=5) #, end_time=yesterday_midnight_utc
     return query.as_dataframe(labels=['instance_name'])
 
 
@@ -228,8 +251,6 @@ def get_ram(model):
     for row in models:
         if row[0] == model:
             return row[2]
-
-
 
 
 if __name__ == '__main__':
