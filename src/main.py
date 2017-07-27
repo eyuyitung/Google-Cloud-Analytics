@@ -77,6 +77,7 @@ def get_monitoring_client(project):
 
 
 def main():
+
     specs = []#holds list of configs for each instance
     atts = []#holds list of attributes for each instance
     projects = api_call(resource_manager.projects(), 'projects', [])
@@ -145,14 +146,15 @@ def main():
                     machine_type = segments[len(segments) - 1]
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
-                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram), 'GCP', machine_type, id, cpu_type, operating_system, os_version])
+                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram),
+                                  'GCP', machine_type, id, cpu_type, operating_system, os_version])
                     atts.append([instance_name, id, networkIP, creation_date, group, '"'+metadata+'"',# TODO metadata is too long to push to CIRBA
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
                     if i['status'] != 'TERMINATED':
                         name_instance.append(instance_name)
-
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
+
         dict_metric = {}
         key_metric = []
         for key in sorted(instance_metrics):
@@ -162,7 +164,6 @@ def main():
                 df = df.groupby(axis=1, level=0).sum()
             if key == 'CPU Utilization':
                 df *= 100
-
             dict_metric[key] = df
 
         for name in total_metrics:
@@ -172,7 +173,7 @@ def main():
                     total.append(dict_metric[key])
             dict_metric[name] = total[0].add(total[1], fill_value=0, level=0)
 
-        for key in dict_metric:
+        for key in dict_metric:  # TODO REVIEW THIS
             df = dict_metric[key]
             key_label = [key] * df.shape[1]
             cols = list(zip(df.columns, key_label))
@@ -195,7 +196,7 @@ def main():
     # display the final amount of time taken
     end_time = timeit.default_timer()
     program_time = end_time-start_time
-    print 'Finished in',int(program_time), 'seconds'
+    print 'Finished in', int(program_time), 'seconds'
 
 
 def api_call(base, key, args):  # generic method for pulling relevant data from api response
@@ -216,8 +217,8 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
 def monitoring_call(project_id, metric):  #hours = global variable parsed from discovery.bat
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
-    query = client.query(METRIC, hours=hours)\
-        .align(Aligner.ALIGN_MEAN, minutes=5) #, end_time=yesterday_midnight_utc
+    query = client.query(METRIC, hours=hours, end_time=yesterday_midnight_utc)\
+        .align(Aligner.ALIGN_MEAN, minutes=5)
     return query.as_dataframe(labels=['instance_name'])
 
 
