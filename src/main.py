@@ -34,11 +34,6 @@ instance_metrics = {'CPU Utilization': 'instance/cpu/utilization',  # concatenat
                     'Raw Net Sent Utilization': 'instance/network/sent_bytes_count',
                     'Network Packets Sent': 'instance/network/sent_packets_count'}
 
-with open(project_root + os.path.sep + 'gcp_models.csv', 'rb') as f:
-    reader = csv.reader(f)
-    models_list = (list(reader))
-f.close()
-
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('-t', dest = 'hours',
                     help='amount of hours to receive data from')
@@ -95,6 +90,7 @@ def main():
                 #print zone_name
                 #print compute.instanceGroups().list(project=project_id, zone=zone_name).execute()
                 #print compute.instanceGroups().get(project=project_id, zone=zone_name, instanceGroup='auto-scaling-group-1').execute()
+                #pprint(compute.disks().list(project=project_id, zone=zone_name).execute())
                 project['instances'].extend(current_instances)
 
                 #  retrieve configs and store them in 'specs'
@@ -123,6 +119,8 @@ def main():
                     if new_metadata == {}:
                         new_metadata = ''
                     metadata = str(new_metadata).replace('"','""')
+                    if len(metadata) > 100:
+                        metadata = ''
                     #print compute.instances().get(project=project_id, zone=zone_name, instance=i['name']).execute()['metadata']
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = i['creationTimestamp']
