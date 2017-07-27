@@ -2,7 +2,7 @@
 import timeit
 start_time=timeit.default_timer()
 
-print 'Importing assets ...'
+print 'Importing libraries ...'
 
 from google.cloud import monitoring
 from google.cloud.monitoring import Aligner
@@ -53,9 +53,9 @@ if hours:
     hours = int(args.hours)
 else:
     hours = 24
-if hours > 168:
-    print 'only 168 hours or less of metrics can be collected (retreiving 168)'
-    hours = 168
+#if hours > 168:
+#    print 'only 168 hours or less of metrics can be collected (retreiving 168)'
+#    hours = 168
 
 models = []
 
@@ -92,11 +92,14 @@ def main():
         print "Found %d zones" % len(all_zones)
         disk_size = []
         name_instance = []
-        print 'Loading instances ...'
+        print 'Loading instance attributes ...'
         for zone in all_zones:  # for each zone in list of zone dictionaries :
             zone_name = zone['name']
             current_instances = api_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
             if current_instances is not None and len(current_instances) > 0:
+                #print zone_name
+                #print compute.instanceGroups().list(project=project_id, zone=zone_name).execute()
+                #print compute.instanceGroups().get(project=project_id, zone=zone_name, instanceGroup='auto-scaling-group-1').execute()
                 project['instances'].extend(current_instances)
 
                 #  retrieve configs and store them in 'specs'
@@ -104,11 +107,36 @@ def main():
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
                 for i in current_instances:  # loop through all instances to create lists of their configs
+                    os_version = compute.disks().get(project=project_id, zone=zone_name, disk=i['name']).execute()['sourceImage'].split('/')
+                    os_version = os_version[len(os_version)-1]
+                    if 'windows' in os_version:
+                        operating_system = 'Windows'
+                    else:
+                        operating_system = 'Linux'
+                    if 'items' in i['metadata'].keys():
+                        metadata = i['metadata']['items']
+                    else:
+                        metadata = ''
+                    new_metadata = {}
+                    group = ''
+                    for data in metadata:
+                        if 'created-by' in new_metadata.keys():
+                            group = new_metadata['created-by'].split('/')
+                            group = group[len(group) - 1]
+                        else:
+                            new_metadata[str(data['key'])]=str(data['value'])
+                    if new_metadata == {}:
+                        new_metadata = ''
+                    metadata = str(new_metadata).replace('"','""')
+                    #print compute.instances().get(project=project_id, zone=zone_name, instance=i['name']).execute()['metadata']
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
-                    zone_dep = zone_name.split('-')[2]
                     creation_date = i['creationTimestamp']
                     instance_name = (i['name'])
                     status = i['status']
+                    if status == 'RUNNING':
+                        status = 'Running'
+                    else:
+                        status = 'Offline'
                     cpu_type = i['cpuPlatform']
                     networkIP = i['networkInterfaces'][0]['networkIP']
                     machineurl = i['machineType']
@@ -117,9 +145,9 @@ def main():
                     machine_type = segments[len(segments) - 1]
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
-                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', '',
-                        '', str(ram), 'Google', machine_type, id, cpu_type])
-                    atts.append([instance_name, id, networkIP, creation_date, zone_loc, zone_dep, disk_size[disk_index]])
+                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram), 'GCP', machine_type, id, cpu_type, operating_system, os_version])
+                    atts.append([instance_name, id, networkIP, creation_date, group, '"'+metadata+'"',# TODO metadata is too long to push to CIRBA
+                                 zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
                     if i['status'] != 'TERMINATED':
                         name_instance.append(instance_name)
@@ -197,11 +225,12 @@ def monitoring_call(project_id, metric):  #hours = global variable parsed from d
 def to_csv_list(lst,file,type):
     with open(project_root + os.path.sep + file, 'wb') as f:
         if type == 'a':
-            f.write('host_name,HW Total CPUs,HW Total Physical CPUs,HW Cores Per CPU,HW Threads Per Core,BM CINT2006 Rate,'
-                    'HW CPU Speed,HW Total Memory,HW Manufacturer,HW Model,HW Serial Number,HW CPU Architecture\n')
+            f.write('host_name,HW Total CPUs,HW Total Physical CPUs,HW Cores Per CPU,HW Threads Per Core,'
+                    'HW Total Memory,HW Manufacturer,HW Model,HW Serial Number,HW CPU Architecture,OS Name,OS Version\n')
         if type == 'b':
-            f.write('host_name,Instance ID,Instance IP,'
-                    'Launch Time,Location,Department,PS Capacity\n')
+            f.write('host_name,Instance ID,Instance IP,Launch Time, Group, Tags,'
+                    'Virtual Datacenter,Virtual Cluster,Virtual Domain,Virtual Technology,'
+                    'PS Capacity,Power State\n')
         for item in lst:
             f.write(','.join(item)+'\n')
     f.close()

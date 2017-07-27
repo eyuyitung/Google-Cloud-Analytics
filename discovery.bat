@@ -2,6 +2,7 @@ ECHO OFF
 
 
 rem/////////////////////////// CHANGE TO DESIRED SAMPLE LENGTH ////////////////////////////////
+rem/////week is 168 hours, month is 720 hours/////
 set HOURS=24
 
 
