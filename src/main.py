@@ -39,20 +39,11 @@ total_metrics = {'Raw Disk Utilization': ('Disk', 'Utilization'),
                  'Raw Net Utilization': ('Net', 'Utilization'),
                  'Network Packets': ('Network', 'Packets')}
 
-with open(project_root + os.path.sep + 'gcp_models.csv', 'rb') as f:
-    reader = csv.reader(f)
-    models_list = (list(reader))
-f.close()
-
 parser = argparse.ArgumentParser(description='Process some integers.')
-parser.add_argument('-t', dest = 'hours',
+parser.add_argument('-t', dest = 'hours', default='24',
                     help='amount of hours to receive data from')
 args = parser.parse_args()
-hours = args.hours
-if hours:
-    hours = int(args.hours)
-else:
-    hours = 24
+hours = int(args.hours)
 #if hours > 168:
 #    print 'only 168 hours or less of metrics can be collected (retreiving 168)'
 #    hours = 168
@@ -121,8 +112,8 @@ def main():
                     new_metadata = {}
                     group = ''
                     for data in metadata:
-                        if 'created-by' in new_metadata.keys():
-                            group = new_metadata['created-by'].split('/')
+                        if data['key'] == 'created-by':
+                            group = data['value'].split('/')
                             group = group[len(group) - 1]
                         else:
                             new_metadata[str(data['key'])]=str(data['value'])
@@ -223,7 +214,6 @@ def monitoring_call(project_id, metric):  #hours = global variable parsed from d
         .align(Aligner.ALIGN_MEAN, minutes=5) #, end_time=yesterday_midnight_utc
     return query.as_dataframe(labels=['instance_name'])
 
-
 # print ant list of lists to a csv file
 def to_csv_list(lst,file,type):
     with open(project_root + os.path.sep + file, 'wb') as f:
@@ -238,6 +228,7 @@ def to_csv_list(lst,file,type):
             f.write(','.join(item)+'\n')
     f.close()
 
+#function to retrieve amount of CPUs based on machine type from API
 def get_cpus(model):
     if model.split('-')[0] == 'custom':
         return model.split('-')[1]
@@ -245,6 +236,7 @@ def get_cpus(model):
         if row[0] == model:
             return row[1]
 
+#function to retrieve amount of RAM based on machine type from API
 def get_ram(model):
     if model.split('-')[0] == 'custom':
         return float(model.split('-')[2])
