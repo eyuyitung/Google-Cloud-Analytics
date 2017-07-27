@@ -39,11 +39,6 @@ total_metrics = {'Raw Disk Utilization': ('Disk', 'Utilization'),
                  'Raw Net Utilization': ('Net', 'Utilization'),
                  'Network Packets': ('Network', 'Packets')}
 
-with open(project_root + os.path.sep + 'gcp_models.csv', 'rb') as f:
-    reader = csv.reader(f)
-    models_list = (list(reader))
-f.close()
-
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('-t', dest = 'hours',
                     help='amount of hours to receive data from')
@@ -160,38 +155,38 @@ def main():
 
         dict_metric = {}
         key_metric = []
-        for key in sorted(instance_metrics):
+        for key in sorted(instance_metrics):  # calls api for each metric, add to dict (metric : dataframe)
             df = (monitoring_call(project_id, key))
             print key, "done"
             if df.shape[1] > len(name_instance):  # if instance has more than 1 value for metric, finds aggregate
                 df = df.groupby(axis=1, level=0).sum()
-            if key == 'CPU Utilization':
+            if key == 'CPU Utilization':  # google output scale 0-1 Densify import scale 1-100
                 df *= 100
             dict_metric[key] = df
 
-        for name in total_metrics:
+        for name in total_metrics:  # extrapolates total i/o from api metrics
             total = []
             for key in dict_metric:
                 if all(x in key for x in name):
                     total.append(dict_metric[key])
             dict_metric[name] = total[0].add(total[1], fill_value=0, level=0)
 
-        for key in dict_metric:  # TODO REVIEW THIS
+        for key in dict_metric:  # adds metric label to dataframe and converts dict to list
             df = dict_metric[key]
             key_label = [key] * df.shape[1]
             cols = list(zip(df.columns, key_label))
             df.columns = MultiIndex.from_tuples(cols)
             key_metric.append(df)
 
-        sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)
-        gb = sorted_metrics.groupby(axis=1, level=0)
-        grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]
+        sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)  # horizontal concat and sort by instance name
+        gb = sorted_metrics.groupby(axis=1, level=0)  # group by instance name
+        grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]  # create list of dataframe according to groupby
         dict_instances = {}
         for df in grouped_instances:
-            dict_instances[list(df)[0][0]] = df
-            df.columns = df.columns.droplevel()
+            dict_instances[list(df)[0][0]] = df  # create key:value pair of instance name : dataframe
+            df.columns = df.columns.droplevel()  # drop instance_name header
 
-        final_list = concat(dict_instances, names=['host_name', 'Datetime'])
+        final_list = concat(dict_instances, names=['host_name', 'Datetime'])  # vertical concat, names = index header
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
 
     to_csv_list(specs, 'gcp_config.csv','a')
