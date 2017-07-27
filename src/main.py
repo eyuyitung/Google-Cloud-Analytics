@@ -102,21 +102,27 @@ def main():
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
                 for i in current_instances:  # loop through all instances to create lists of their configs
+                    os_version = compute.disks().get(project=project_id, zone=zone_name, disk=i['name']).execute()['sourceImage'].split('/')
+                    os_version = os_version[len(os_version)-1]
+                    if 'windows' in os_version:
+                        operating_system = 'Windows'
+                    else:
+                        operating_system = 'Linux'
                     if 'items' in i['metadata'].keys():
                         metadata = i['metadata']['items']
                     else:
                         metadata = ''
                     new_metadata = {}
+                    group = ''
                     for data in metadata:
-                        new_metadata[str(data['key'])]=str(data['value'])
+                        if 'created-by' in new_metadata.keys():
+                            group = new_metadata['created-by'].split('/')
+                            group = group[len(group) - 1]
+                        else:
+                            new_metadata[str(data['key'])]=str(data['value'])
                     if new_metadata == {}:
-                        new_metadata = {}
+                        new_metadata = ''
                     metadata = str(new_metadata).replace('"','""')
-                    if 'created-by' in new_metadata.keys():
-                        group = new_metadata['created-by'].split('/')
-                        group = group[len(group)-1]
-                    else:
-                        group = ''
                     #print compute.instances().get(project=project_id, zone=zone_name, instance=i['name']).execute()['metadata']
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = i['creationTimestamp']
@@ -134,9 +140,9 @@ def main():
                     machine_type = segments[len(segments) - 1]
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
-                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram), 'GCP', machine_type, id, cpu_type])
-                    atts.append([instance_name, id, networkIP, creation_date, group, '', #'"'+metadata+'"', TODO metadata is too long to push to CIRBA
-                                 zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index],status])
+                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram), 'GCP', machine_type, id, cpu_type, operating_system, os_version])
+                    atts.append([instance_name, id, networkIP, creation_date, group, '"'+metadata+'"',# TODO metadata is too long to push to CIRBA
+                                 zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
                     if i['status'] != 'TERMINATED':
                         name_instance.append(instance_name)
@@ -202,10 +208,11 @@ def to_csv_list(lst,file,type):
     with open(project_root + os.path.sep + file, 'wb') as f:
         if type == 'a':
             f.write('host_name,HW Total CPUs,HW Total Physical CPUs,HW Cores Per CPU,HW Threads Per Core,'
-                    'HW Total Memory,HW Manufacturer,HW Model,HW Serial Number,HW CPU Architecture\n')
+                    'HW Total Memory,HW Manufacturer,HW Model,HW Serial Number,HW CPU Architecture,OS Name,OS Version\n')
         if type == 'b':
             f.write('host_name,Instance ID,Instance IP,Launch Time, Group, Tags,'
-                    'Virtual Datacenter,Virtual Cluster,Virtual Domain,Virtual Technology,PS Capacity,Power State\n')
+                    'Virtual Datacenter,Virtual Cluster,Virtual Domain,Virtual Technology,'
+                    'PS Capacity,Power State\n')
         for item in lst:
             f.write(','.join(item)+'\n')
     f.close()
