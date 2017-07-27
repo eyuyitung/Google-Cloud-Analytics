@@ -101,6 +101,7 @@ def main():
                 #print zone_name
                 #print compute.instanceGroups().list(project=project_id, zone=zone_name).execute()
                 #print compute.instanceGroups().get(project=project_id, zone=zone_name, instanceGroup='auto-scaling-group-1').execute()
+                #pprint(compute.disks().list(project=project_id, zone=zone_name).execute())
                 project['instances'].extend(current_instances)
 
                 #  retrieve configs and store them in 'specs'
@@ -129,6 +130,8 @@ def main():
                     if new_metadata == {}:
                         new_metadata = ''
                     metadata = str(new_metadata).replace('"','""')
+                    if len(metadata) > 100:
+                        metadata = ''
                     #print compute.instances().get(project=project_id, zone=zone_name, instance=i['name']).execute()['metadata']
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = i['creationTimestamp']
