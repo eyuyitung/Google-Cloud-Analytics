@@ -68,6 +68,7 @@ def get_monitoring_client(project):
 
 
 def main():
+
     specs = []#holds list of configs for each instance
     atts = []#holds list of attributes for each instance
     projects = api_call(resource_manager.projects(), 'projects', [])
@@ -139,49 +140,49 @@ def main():
                     machine_type = segments[len(segments) - 1]
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
-                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram), 'GCP', machine_type, id, cpu_type, operating_system, os_version])
+                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram),
+                                  'GCP', machine_type, id, cpu_type, operating_system, os_version])
                     atts.append([instance_name, id, networkIP, creation_date, group, '"'+metadata+'"',# TODO metadata is too long to push to CIRBA
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
                     if i['status'] != 'TERMINATED':
                         name_instance.append(instance_name)
-
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
+
         dict_metric = {}
         key_metric = []
-        for key in sorted(instance_metrics):
+        for key in sorted(instance_metrics):  # calls api for each metric, add to dict (metric : dataframe)
             df = (monitoring_call(project_id, key))
             print key, "done"
             if df.shape[1] > len(name_instance):  # if instance has more than 1 value for metric, finds aggregate
                 df = df.groupby(axis=1, level=0).sum()
-            if key == 'CPU Utilization':
+            if key == 'CPU Utilization':  # google output scale 0-1 Densify import scale 1-100
                 df *= 100
-
             dict_metric[key] = df
 
-        for name in total_metrics:
+        for name in total_metrics:  # extrapolates total i/o from api metrics
             total = []
             for key in dict_metric:
                 if all(x in key for x in name):
                     total.append(dict_metric[key])
             dict_metric[name] = total[0].add(total[1], fill_value=0, level=0)
 
-        for key in dict_metric:
+        for key in dict_metric:  # adds metric label to dataframe and converts dict to list
             df = dict_metric[key]
             key_label = [key] * df.shape[1]
             cols = list(zip(df.columns, key_label))
             df.columns = MultiIndex.from_tuples(cols)
             key_metric.append(df)
 
-        sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)
-        gb = sorted_metrics.groupby(axis=1, level=0)
-        grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]
+        sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)  # horizontal concat and sort by instance name
+        gb = sorted_metrics.groupby(axis=1, level=0)  # group by instance name
+        grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]  # create list of dataframe according to groupby
         dict_instances = {}
         for df in grouped_instances:
-            dict_instances[list(df)[0][0]] = df
-            df.columns = df.columns.droplevel()
+            dict_instances[list(df)[0][0]] = df  # create key:value pair of instance name : dataframe
+            df.columns = df.columns.droplevel()  # drop instance_name header
 
-        final_list = concat(dict_instances, names=['host_name', 'Datetime'])
+        final_list = concat(dict_instances, names=['host_name', 'Datetime'])  # vertical concat, names = index header
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
 
     to_csv_list(specs, 'gcp_config.csv','a')
@@ -189,7 +190,7 @@ def main():
     # display the final amount of time taken
     end_time = timeit.default_timer()
     program_time = end_time-start_time
-    print 'Finished in',int(program_time), 'seconds'
+    print 'Finished in', int(program_time), 'seconds'
 
 
 def api_call(base, key, args):  # generic method for pulling relevant data from api response
@@ -210,8 +211,8 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
 def monitoring_call(project_id, metric):  #hours = global variable parsed from discovery.bat
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
-    query = client.query(METRIC, hours=hours)\
-        .align(Aligner.ALIGN_MEAN, minutes=5) #, end_time=yesterday_midnight_utc
+    query = client.query(METRIC, hours=hours, end_time=yesterday_midnight_utc)\
+        .align(Aligner.ALIGN_MEAN, minutes=5)
     return query.as_dataframe(labels=['instance_name'])
 
 # print ant list of lists to a csv file
