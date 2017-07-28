@@ -112,16 +112,17 @@ def main():
                         metadata = ''
                     new_metadata = {}
                     group = ''
+                    owner = ''
                     for data in metadata:
                         if data['key'] == 'created-by':
                             group = data['value'].split('/')
                             group = group[len(group) - 1]
-                        else:
+                        elif len(data['key']+data['value']) < 250:
                             new_metadata[str(data['key'])]=str(data['value'])
                     if new_metadata == {}:
                         new_metadata = ''
                     metadata = str(new_metadata).replace('"','""')
-                    if len(metadata) > 100:
+                    if len(metadata) > 250:
                         metadata = ''
                     #print compute.instances().get(project=project_id, zone=zone_name, instance=i['name']).execute()['metadata']
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
@@ -156,8 +157,10 @@ def main():
             print key, "done"
             if df.shape[1] > len(name_instance):  # if instance has more than 1 value for metric, finds aggregate
                 df = df.groupby(axis=1, level=0).sum()
-            if key == 'CPU Utilization':  # google output scale 0-1 Densify import scale 1-100
+            if key == 'CPU Utilization':  # google output scale: 0-1 Densify, import scale: 1-100
                 df *= 100
+            else:  # google output scale: per minute, Densify import scale: per second
+                df /= 60
             dict_metric[key] = df
 
         for name in total_metrics:  # extrapolates total i/o from api metrics
@@ -213,7 +216,7 @@ def monitoring_call(project_id, metric):  #hours = global variable parsed from d
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
     query = client.query(METRIC, hours=hours, end_time=yesterday_midnight_utc)\
         .align(Aligner.ALIGN_MEAN, minutes=5)
-    return query.as_dataframe(labels=['instance_name'])
+    return query.as_dataframe(label='instance_name')
 
 # print ant list of lists to a csv file
 def to_csv_list(lst,file,type):
