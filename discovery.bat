@@ -2,15 +2,16 @@ ECHO OFF
 
 
 rem/////////////////////////// CHANGE TO DESIRED SAMPLE LENGTH ////////////////////////////////
-rem/////week is 168 hours, month is 720 hours/////
+rem week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
 set HOURS=24
-
-
+rem///////////////// SET TO TRUE IF PROJECT LINKED TO STACKDRIVER PREMIUM ACCOUNT /////////////
+set PREMIUM=False
 
 set fpath=%~sdp0
 
 ECHO  - Step 1 - GCP Discovery
-python %fpath%src\main.py -t %HOURS%
+py %fpath%src\main.py -t %HOURS% -p %PREMIUM%
+
 if errorlevel 1 (GOTO END)
 
 ECHO  - Step 2 - GCP Config
