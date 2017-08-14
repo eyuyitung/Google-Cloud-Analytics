@@ -6,6 +6,7 @@
 pip install -r requirements.txt
 ```
 
+
 2. follow instructions in [Acquiring GCP credentials.docx](Acquiring GCP credentials.docx) to attain credentials for each project and
 save them in this folder
 
@@ -21,3 +22,4 @@ if you wish to save this somewhere else or as a different name, make sure you up
 run Discovery.bat as admin or utilize the Discovery as admin shortcut.
 
  
+

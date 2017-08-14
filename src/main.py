@@ -58,7 +58,6 @@ agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
 instance_names = {}
 
 
-
 if hours > 1008:
     print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
     hours = 1008
