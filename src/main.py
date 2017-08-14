@@ -7,7 +7,6 @@ print 'Importing libraries ...'
 from google.cloud import monitoring
 from google.cloud.monitoring import Aligner
 from googleapiclient import discovery
-#from pprint import pprint
 import google.auth
 import os
 from pandas import *
@@ -16,9 +15,22 @@ import csv
 import argparse
 
 print 'Retrieving credentials ...'
-project_root = os.path.abspath(os.path.join(__file__ ,"../.."))
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + "google-credentials.json"
 
+parser = argparse.ArgumentParser()
+parser.add_argument('-i', dest='project', default='pm-testing.json',
+                    help='name of project credential file') # TODO Change or remove default file
+parser.add_argument('-t', dest='hours', default='24',
+                    help='amount of hours to receive data from')
+parser.add_argument('-a', dest='agents', default=False,
+                    help='whether or not agents are active in project')
+
+args = parser.parse_args()
+hours = int(args.hours)
+agents = args.agents
+project_name = str(args.project)
+
+project_root = os.path.abspath(os.path.join(__file__, "../.."))
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + project_name
 credentials, project = google.auth.default()
 
 resource_manager = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
@@ -34,22 +46,18 @@ instance_metrics = {'CPU Utilization': 'instance/cpu/utilization',  # concatenat
                     'Network Packets Received': 'instance/network/received_packets_count',
                     'Network Packets Sent': 'instance/network/sent_packets_count'}
 
-agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
-                 'Percent Memory Used': 'memory/percent_used',
-                 'Raw Disk Space Usage': 'disk/bytes_used'}
-
 total_metrics = {'Raw Disk Utilization': ('Disk', 'Utilization'),
                  'Disk Operations': ('Disk', 'Operations'),
                  'Raw Net Utilization': ('Net', 'Utilization'),
                  'Network Packets': ('Network', 'Packets')}
 
+agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
+                 'Percent Memory Used': 'memory/percent_used',
+                 'Raw Disk Space Usage': 'disk/bytes_used'}
+
 instance_names = {}
 
-parser = argparse.ArgumentParser(description='Process some integers.')
-parser.add_argument('-t', dest='hours', default='24',
-                    help='amount of hours to receive data from')
-args = parser.parse_args()
-hours = int(args.hours)
+
 if hours > 1008:
     print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
     hours = 1008
@@ -76,7 +84,6 @@ def get_monitoring_client(project):
 
 
 def main():
-
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
     projects = api_call(resource_manager.projects(), 'projects', [])
@@ -86,7 +93,7 @@ def main():
         project_id = project['projectId']
         m = api_call(compute.machineTypes(), 'items', {'project': project_id, 'zone': 'us-central1-a'})
         for model in m:
-            models.append([model['name'],model['guestCpus'],model['memoryMb']])
+            models.append([model['name'], model['guestCpus'], model['memoryMb']])
         all_zones = api_call(compute.zones(), 'items', {'project': project_id})
         print "Found %d zones" % len(all_zones)
         disk_size = []
@@ -96,7 +103,6 @@ def main():
             current_instances = api_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
             if current_instances is not None and len(current_instances) > 0:
                 project['instances'].extend(current_instances)
-
                 # retrieve configs and store them in 'specs'
                 disk_index = 0
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
@@ -115,7 +121,6 @@ def main():
                     new_metadata = {}
                     group = ''
                     owner = ''
-
                     for data in metadata:  # take data with certain keys into variables, and the rest, if less than 250 characters, into list
                         if data['key'] == 'created-by':
                             group = data['value'].split('/')
@@ -123,13 +128,12 @@ def main():
                         elif data['key'] == 'owner':
                             owner = data['value']
                         elif len(data['key']+data['value']) < 250:
-                            new_metadata[str(data['key'])]=str(data['value'])
+                            new_metadata[str(data['key'])] = str(data['value'])
                     if new_metadata == {}:
                         new_metadata = ''
-                    metadata = str(new_metadata).replace('"','""')
+                    metadata = str(new_metadata).replace('""', '""')
                     if len(metadata) > 250:
                         metadata = ''
-
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = instance_data['creationTimestamp']
                     instance_name = (instance_data['name'])
@@ -160,23 +164,24 @@ def main():
         for key in sorted(instance_metrics):  # calls api for each metric, add to dict (metric : dataframe)
             df = (monitoring_call(project_id, key))
             print key, "done"
-            df = df.groupby(axis=1, level=0).sum()
+            df = df.groupby(axis=1, level=0).sum()  # sum if duplicate headers
             if key == 'CPU Utilization':  # google output scale: 0-1, Densify import scale: 1-100
                 df *= 100
             else:  # google output measurement: per minute, Densify import measurement: per second
                 df /= 60
             dict_metric[key] = df
 
-        for key in sorted(agent_metrics):  # calls api for each metric, add to dict (metric : dataframe)
-            df = (monitoring_agent_call(project_id, key))
-            print key, "done"
-            df = df.groupby(axis=1, level=0).sum()
-            dict_metric[key] = df
+        if agents == 'True' or agents == 'true':
+            for key in sorted(agent_metrics):  # calls api for each metric, add to dict (metric : dataframe)
+                df = (monitoring_agent_call(project_id, key))
+                print key, "done"
+                df = df.groupby(axis=1, level=0).sum()
+                dict_metric[key] = df
 
         for name in total_metrics:  # extrapolates total i/o from api metrics
             total = []
             for key in dict_metric:
-                if all(x in key for x in name):
+                if all(x in key for x in name):  # if key contains all of total_metrics tuple
                     total.append(dict_metric[key])
             dict_metric[name] = total[0].add(total[1], fill_value=0, level=0)
 
@@ -209,7 +214,7 @@ def main():
 
 
 def api_call(base, key, args):  # generic method for pulling relevant data from api response
-    export = []
+    return_res = []
     if args:
         request = base.list(**args)
     else:
@@ -218,9 +223,9 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
     while request is not None:
         response = request.execute()
         if key in response:
-            export.extend(response[key])
+            return_res.extend(response[key])
         request = base.list_next(previous_request=request, previous_response=response)
-    return export
+    return return_res
 
 
 def monitoring_call(project_id, metric):  # hours = global variable parsed from discovery.bat
