@@ -15,9 +15,22 @@ import csv
 import argparse
 
 print 'Retrieving credentials ...'
-project_root = os.path.abspath(os.path.join(__file__, "../.."))
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + "google-credentials.json"
 
+parser = argparse.ArgumentParser()
+parser.add_argument('-i', dest='project', default='pm-testing.json',
+                    help='name of project credential file') # TODO Change or remove default file
+parser.add_argument('-t', dest='hours', default='24',
+                    help='amount of hours to receive data from')
+parser.add_argument('-a', dest='agents', default=False,
+                    help='whether or not agents are active in project')
+
+args = parser.parse_args()
+hours = int(args.hours)
+agents = args.agents
+project_name = str(args.project)
+
+project_root = os.path.abspath(os.path.join(__file__, "../.."))
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + project_name
 credentials, project = google.auth.default()
 
 resource_manager = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
@@ -33,27 +46,19 @@ instance_metrics = {'CPU Utilization': 'instance/cpu/utilization',  # concatenat
                     'Network Packets Received': 'instance/network/received_packets_count',
                     'Network Packets Sent': 'instance/network/sent_packets_count'}
 
-agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
-                 'Percent Memory Used': 'memory/percent_used',
-                 'Raw Disk Space Usage': 'disk/bytes_used'}
-
 total_metrics = {'Raw Disk Utilization': ('Disk', 'Utilization'),
                  'Disk Operations': ('Disk', 'Operations'),
                  'Raw Net Utilization': ('Net', 'Utilization'),
                  'Network Packets': ('Network', 'Packets')}
 
+agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
+                 'Percent Memory Used': 'memory/percent_used',
+                 'Raw Disk Space Usage': 'disk/bytes_used'}
+
 instance_names = {}
 
-parser = argparse.ArgumentParser()
-parser.add_argument('-t', dest='hours', default='24',
-                    help='amount of hours to receive data from')
 
-parser.add_argument('-p', dest='premium', default=False,
-                    help='Stackdriver account status')
 
-args = parser.parse_args()
-hours = int(args.hours)
-stackdriver_premium = args.premium
 if hours > 1008:
     print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
     hours = 1008
@@ -167,7 +172,7 @@ def main():
                 df /= 60
             dict_metric[key] = df
 
-        if stackdriver_premium == True:
+        if agents == 'True' or agents == 'true':
             for key in sorted(agent_metrics):  # calls api for each metric, add to dict (metric : dataframe)
                 df = (monitoring_agent_call(project_id, key))
                 print key, "done"
@@ -210,7 +215,7 @@ def main():
 
 
 def api_call(base, key, args):  # generic method for pulling relevant data from api response
-    export = []
+    return_res = []
     if args:
         request = base.list(**args)
     else:
@@ -219,9 +224,9 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
     while request is not None:
         response = request.execute()
         if key in response:
-            export.extend(response[key])
+            return_res.extend(response[key])
         request = base.list_next(previous_request=request, previous_response=response)
-    return export
+    return return_res
 
 
 def monitoring_call(project_id, metric):  # hours = global variable parsed from discovery.bat

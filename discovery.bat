@@ -1,16 +1,24 @@
-ECHO OFF
+
+@ECHO OFF
+
+rem *************************** change this ******************************
+rem [AGENTS] whether or not the project(s) contain any stackdriver monitoring agents
+
+set AGENTS=False
+
+rem ***************** change nothing beyond this point *******************
 
 
-rem/////////////////////////// CHANGE TO DESIRED SAMPLE LENGTH ////////////////////////////////
-rem week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
-set HOURS=24
-rem///////////////// SET TO TRUE IF PROJECT LINKED TO STACKDRIVER PREMIUM ACCOUNT /////////////
-set PREMIUM=False
+echo Copyright (c) 2002-2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
+set /p PROJECT_ID=Please enter full credential file name: (ex. my-project-123.json) 
+
+echo one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
+set /p HOURS=Please enter your desired sample size in hours: 
 
 set fpath=%~sdp0
 
 ECHO  - Step 1 - GCP Discovery
-py %fpath%src\main.py -p %PREMIUM% -t %HOURS% 
+py %fpath%src\main.py -a %AGENTS% -t %HOURS% -i %PROJECT_ID%
 
 if errorlevel 1 (GOTO END)
 
