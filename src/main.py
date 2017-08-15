@@ -30,7 +30,7 @@ agents = str(args.agents)
 project_name = str(args.project)
 
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + project_name
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + os.path.join('credentials', project_name)
 credentials, project = google.auth.default()
 
 resource_manager = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
