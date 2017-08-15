@@ -26,7 +26,7 @@ parser.add_argument('-a', dest='agents', default=False,
 
 args = parser.parse_args()
 hours = int(args.hours)
-agents = args.agents
+agents = str(args.agents)
 project_name = str(args.project)
 
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
@@ -171,7 +171,7 @@ def main():
                 df /= 60
             dict_metric[key] = df
 
-        if agents == 'True' or agents == 'true':
+        if agents == 'y' or agents == 'Y':
             for key in sorted(agent_metrics):  # calls api for each metric, add to dict (metric : dataframe)
                 df = (monitoring_agent_call(project_id, key))
                 print key, "done"

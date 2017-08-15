@@ -16,6 +16,8 @@ set /p PROJECT_ID=Please enter full credential file name: (ex. my-project-123.js
 echo one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
 set /p HOURS=Please enter your desired sample size in hours: 
 
+echo Within the project specified above, do any of the instances contain active stackdriver agents?
+set /p AGENTS=Please enter (Y/N) : 
 
 set fpath=%~sdp0
 
