@@ -1,14 +1,6 @@
 
 @ECHO OFF
 
-:
-rem *************************** change this ******************************
-rem [AGENTS] whether or not the project(s) contain any stackdriver monitoring agents
-
-set AGENTS=False
-
-rem ***************** change nothing beyond this point *******************
-
 
 echo Copyright (c) 2002-2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
 set /p PROJECT_ID=Please enter full credential file name: (ex. my-project-123.json) 
