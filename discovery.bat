@@ -3,7 +3,7 @@
 rem ***************** Edit these default parameters ********************
 
 rem one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
-set HOURS=168 
+set HOURS=24 
 
 rem within the project specified do any of the instances contain active stackdriver agents? (Y/N)
 set AGENTS=N
@@ -42,18 +42,17 @@ IF %MANUAL%=="t" (
 
 set fpath=%~sdp0
 IF %AUTO%=="t" (
-	for /f %%f in ('dir /b %fpath%credentials') do (
-		set PROJECT_ID=%%f 
-		echo __________________Automatically Loading %PROJECT_ID%_____________________________
+	for /f "delims=" %%i in ('dir /b "%fpath%credentials\*.json"') do (
+		set PROJECT_ID=%%i
+		echo __________________Automatically Loading %%i_____________________________
 		call:discoveryFunc %PROJECT_ID% %HOURS% %AGENTS% 
 	)
 )
 GOTO:EOF
 
 :discoveryFunc
-echo %~1
 ECHO  - Step 1 - GCP Discovery
-py %fpath%src\main.py -i %~1 -t %~2 -a %~3 
+python %fpath%src\main.py -i %PROJECT_ID% -t %HOURS% -a %AGENTS% 
 
 if errorlevel 1 GOTO:EOF
 
