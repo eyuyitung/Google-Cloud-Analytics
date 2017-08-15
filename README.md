@@ -14,8 +14,6 @@ pip install -r requirements.txt
 3. Follow instructions in [Acquiring GCP credentials.docx](Acquiring GCP credentials.docx) to attain credentials for each project and
 save them into the project root folder
 
-if you wish to save this somewhere else or as a different name, make sure you update its location in the [main.py](main.py) file
-
 ## Loading GCP Attributes
 1. Open up Cirba Analysis Console
 2. Navigate to Administration > Packages and Components 
