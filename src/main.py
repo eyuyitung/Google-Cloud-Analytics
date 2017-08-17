@@ -131,7 +131,7 @@ def main():
                             new_metadata[str(data['key'])] = str(data['value'])
                     if new_metadata == {}:
                         new_metadata = ''
-                    metadata = str(new_metadata).replace('""', '""')
+                    metadata = str(new_metadata).replace('"', '""')
                     if len(metadata) > 250:
                         metadata = ''
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
