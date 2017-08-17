@@ -1,6 +1,6 @@
 # start timer before anything else
-import timeit
-start_time = timeit.default_timer()
+#import timeit
+#start_time = timeit.default_timer()
 
 print 'Importing libraries ...'
 
@@ -17,7 +17,7 @@ import argparse
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', dest='project', default='pm-testing.json',
+parser.add_argument('-i', dest='project', default='credentials.json',
                     help='name of project credential file') # TODO Change or remove default file
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
@@ -327,6 +327,6 @@ if __name__ == '__main__':
     main()
 
 # display the final amount of time taken
-end_time = timeit.default_timer()
-program_time = end_time-start_time
-print 'Finished in', int(program_time), 'seconds'
+#end_time = timeit.default_timer()
+#program_time = end_time-start_time
+#print 'Finished in', int(program_time), 'seconds'

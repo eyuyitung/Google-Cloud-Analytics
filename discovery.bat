@@ -11,7 +11,7 @@ rem are there any duplicate instance names across any of the projects? (Y/N)
 set MERGE=Y
 rem **************** edit nothing beyond this point *********************
 
-echo Copyright (c) 2002-2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
+echo Copyright (c) 2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
 
 set AUTO="f"
 set FILE="f"
@@ -64,7 +64,7 @@ GOTO:EOF
 
 :discoveryFunc
 ECHO  - Step 1 - GCP Discovery
-py %fpath%src\main.py -i %~1 -t %~2 -a %~3 
+python %fpath%src\main.py -i %~1 -t %~2 -a %~3 
 
 if errorlevel 1 GOTO:EOF
 
