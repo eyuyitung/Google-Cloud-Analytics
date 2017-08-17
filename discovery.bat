@@ -32,10 +32,8 @@ IF %FILE%=="t" (
 IF "%1"=="" (
 	set MANUAL="t"
 	set /p PROJECT_ID=Please enter full credential file name: [ex. my-project-123.json] 
-
 	echo one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks [1008 hours]
 	set /p HOURS=Please enter your desired sample size in hours: 
-
 	echo Within the project specified above, do any of the instances contain active stackdriver agents?
 	set /p AGENTS=Please enter [Y/N] : 
 )
@@ -43,14 +41,14 @@ IF "%1"=="" (
 IF %MANUAL%=="t" (
 	echo __________________Manually Loading %PROJECT_ID%_____________________________
 	call:discoveryFunc %PROJECT_ID% %HOURS% %AGENTS%
-	GOTO:EOF
 )
 
 
 IF %AUTO%=="t" (
-	for /f %%f in ('dir /b %fpath%credentials') DO ( 
-		echo __________________Automatically Loading %%f_____________________________
-		call:discoveryFunc %%f %HOURS% %AGENTS% 
+	for /f %%i in ('dir /b "%fpath%credentials\*.json"') do (
+		set PROJECT_ID=%%i
+		echo __________________Automatically Loading %PROJECT_ID%_____________________________
+		call:discoveryFunc %PROJECT_ID% %HOURS% %AGENTS% 
 	)
 )
 
@@ -63,7 +61,6 @@ echo no arguments : specifiy all of the parameters manually
 GOTO:EOF
 
 :discoveryFunc
-echo %~1
 ECHO  - Step 1 - GCP Discovery
 py %fpath%src\main.py -i %~1 -t %~2 -a %~3 
 
