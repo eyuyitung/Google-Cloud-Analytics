@@ -151,9 +151,10 @@ def main():
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
                     benchmark = 29.9*float(cpus)
-                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram),
+                    name_merge = instance_name + '-' + id[0:3]
+                    specs.append([name_merge, str(cpus), str(cpus), '1', '1', str(ram),
                                   'GCP', machine_type, str(benchmark), id, cpu_type, '2600', operating_system, os_version])
-                    atts.append([instance_name, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
+                    atts.append([name_merge, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
                     instance_names[id] = instance_name
