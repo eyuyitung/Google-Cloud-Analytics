@@ -28,7 +28,7 @@ args = parser.parse_args()
 hours = int(args.hours)
 agents = str(args.agents)
 project_name = str(args.project)
-
+merge = True
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + os.path.join('credentials', project_name)
 credentials, project = google.auth.default()
@@ -55,7 +55,7 @@ agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
                  'Percent Memory Used': 'memory/percent_used',
                  'Raw Disk Space Usage': 'disk/bytes_used'}
 
-instance_names = {}
+
 
 
 if hours > 1008:
@@ -84,6 +84,8 @@ def get_monitoring_client(project):
 
 
 def main():
+    instance_names = {}
+    instance_ids = {}
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
     projects = api_call(resource_manager.projects(), 'projects', [])
@@ -156,6 +158,7 @@ def main():
                     atts.append([instance_name, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
+                    instance_ids[instance_name] = id
                     instance_names[id] = instance_name
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
 
@@ -197,7 +200,12 @@ def main():
         grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]  # create list of dataframe according to groupby
         dict_instances = {}
         for df in grouped_instances:
-            dict_instances[list(df)[0][0]] = df  # create key:value pair of instance name : dataframe
+            inst_name = list(df)[0][0]
+            instance_id = instance_ids[inst_name]
+            if merge:
+                dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
+            else:
+                dict_instances[inst_name] = df
             df.columns = df.columns.droplevel()  # drop instance_name header
 
         final_list = concat(dict_instances, names=['host_name', 'Datetime'])  # vertical concat, names = index header
