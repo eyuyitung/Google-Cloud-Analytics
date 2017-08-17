@@ -37,7 +37,7 @@ IF "%1"=="" (
 	set /p HOURS=Please enter your desired sample size in hours: 
 	echo Within the project specified above, do any of the instances contain active stackdriver agents?
 	set /p AGENTS=Please enter [Y/N] : 
-	echo Are there any duplicate instance names across any of the projects? [Y/N]
+	echo Are there any duplicate instance names across any of the projects? [ Y/N]
 	set /p MERGE=Please enter [Y/N] : 
 )
 

@@ -91,6 +91,7 @@ def get_monitoring_client(project):
 def main():
     instance_names = {}
     instance_ids = {}
+    active_instances = []
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
     projects = api_call(resource_manager.projects(), 'projects', [])
@@ -138,7 +139,7 @@ def main():
                             new_metadata[str(data['key'])] = str(data['value'])
                     if new_metadata == {}:
                         new_metadata = ''
-                    metadata = str(new_metadata).replace('""', '""')
+                    metadata = str(new_metadata).replace('"', '""')
                     if len(metadata) > 250:
                         metadata = ''
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
@@ -147,6 +148,7 @@ def main():
                     status = instance_data['status']
                     if status == 'RUNNING':
                         status = 'Running'
+                        active_instances.append(instance_name)
                     else:
                         status = 'Offline'
                     cpu_type = instance_data['cpuPlatform']
@@ -158,10 +160,10 @@ def main():
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
                     benchmark = 29.9*float(cpus)
-					if merge == True:
-						name_merge = instance_name + '-' + id[0:3]
-					else:
-						name_merge = instance_name
+                    if merge:
+                        name_merge = instance_name + '-' + id[0:3]
+                    else:
+                        name_merge = instance_name
                     specs.append([name_merge, str(cpus), str(cpus), '1', '1', str(ram),
                                   'GCP', machine_type, str(benchmark), id, cpu_type, '2600', operating_system, os_version])
                     atts.append([name_merge, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
@@ -210,7 +212,9 @@ def main():
         dict_instances = {}
         for df in grouped_instances:
             inst_name = list(df)[0][0]
-            instance_id = instance_ids[inst_name]
+            if inst_name in active_instances :
+                instance_id = instance_ids[inst_name]
+
             if merge:
                 dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
             else:
