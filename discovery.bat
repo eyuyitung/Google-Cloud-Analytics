@@ -1,13 +1,14 @@
 @ECHO OFF
 
 rem ***************** Edit these default parameters ********************
-
 rem one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
 set HOURS=168 
 
 rem within the project specified do any of the instances contain active stackdriver agents? (Y/N)
 set AGENTS=N
 
+rem are there any duplicate instance names across any of the projects? (Y/N)
+set MERGE=Y
 rem **************** edit nothing beyond this point *********************
 
 echo Copyright (c) 2002-2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
@@ -36,6 +37,8 @@ IF "%1"=="" (
 	set /p HOURS=Please enter your desired sample size in hours: 
 	echo Within the project specified above, do any of the instances contain active stackdriver agents?
 	set /p AGENTS=Please enter [Y/N] : 
+	echo Are there any duplicate instance names across any of the projects? [Y/N]
+	set /p MERGE=Please enter [Y/N] : 
 )
 
 IF %MANUAL%=="t" (

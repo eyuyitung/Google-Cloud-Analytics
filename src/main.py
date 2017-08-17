@@ -14,8 +14,6 @@ from datetime import *
 import csv
 import argparse
 
-merge = True
-
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
@@ -23,14 +21,19 @@ parser.add_argument('-i', dest='project', default='pm-testing.json',
                     help='name of project credential file') # TODO Change or remove default file
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
-parser.add_argument('-a', dest='agents', default=False,
+parser.add_argument('-a', dest='agents', default='N',
                     help='whether or not agents are active in project')
-
+parser.add_argument('-m', dest='merge',default='Y',
+                    help='merge instance name + first 3 digits of inst_id')
 args = parser.parse_args()
 hours = int(args.hours)
 agents = str(args.agents)
 project_name = str(args.project)
-merge = True
+merge = args.merge
+if merge == 'y' or merge == 'Y':
+    merge = True
+else:
+    merge = False
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + os.path.join('credentials', project_name)
 credentials, project = google.auth.default()
