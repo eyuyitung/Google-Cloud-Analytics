@@ -46,9 +46,8 @@ IF %MANUAL%=="t" (
 
 IF %AUTO%=="t" (
 	for /f %%i in ('dir /b "%fpath%credentials\*.json"') do (
-		set PROJECT_ID=%%i
-		echo __________________Automatically Loading %PROJECT_ID%_____________________________
-		call:discoveryFunc %PROJECT_ID% %HOURS% %AGENTS% 
+		echo __________________Automatically Loading %%i_____________________________
+		call:discoveryFunc %%i %HOURS% %AGENTS% 
 	)
 )
 

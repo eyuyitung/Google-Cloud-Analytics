@@ -3,6 +3,7 @@ google-credentials.json
 repo/
 .idea/
 conf/
+credentials/
 attributes.csv
 workload.csv
 gcp_config.csv
