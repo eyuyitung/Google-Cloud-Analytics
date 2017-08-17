@@ -1,6 +1,6 @@
 # start timer before anything else
-import timeit
-start_time = timeit.default_timer()
+#import timeit
+#start_time = timeit.default_timer()
 
 print 'Importing libraries ...'
 
@@ -17,18 +17,23 @@ import argparse
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', dest='project', default='pm-testing.json',
+parser.add_argument('-i', dest='project', default='credentials.json',
                     help='name of project credential file') # TODO Change or remove default file
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
-parser.add_argument('-a', dest='agents', default=False,
+parser.add_argument('-a', dest='agents', default='N',
                     help='whether or not agents are active in project')
-
+parser.add_argument('-m', dest='merge',default='Y',
+                    help='merge instance name + first 3 digits of inst_id')
 args = parser.parse_args()
 hours = int(args.hours)
 agents = str(args.agents)
 project_name = str(args.project)
-
+merge = args.merge
+if merge == 'y' or merge == 'Y':
+    merge = True
+else:
+    merge = False
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + os.path.join('credentials', project_name)
 credentials, project = google.auth.default()
@@ -55,7 +60,7 @@ agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
                  'Percent Memory Used': 'memory/percent_used',
                  'Raw Disk Space Usage': 'disk/bytes_used'}
 
-instance_names = {}
+
 
 
 if hours > 1008:
@@ -84,6 +89,9 @@ def get_monitoring_client(project):
 
 
 def main():
+    instance_names = {}
+    instance_ids = {}
+    active_instances = []
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
     projects = api_call(resource_manager.projects(), 'projects', [])
@@ -140,6 +148,7 @@ def main():
                     status = instance_data['status']
                     if status == 'RUNNING':
                         status = 'Running'
+                        active_instances.append(instance_name)
                     else:
                         status = 'Offline'
                     cpu_type = instance_data['cpuPlatform']
@@ -151,11 +160,16 @@ def main():
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
                     benchmark = 29.9*float(cpus)
-                    specs.append([instance_name, str(cpus), str(cpus), '1', '1', str(ram),
+                    if merge:
+                        name_merge = instance_name + '-' + id[0:3]
+                    else:
+                        name_merge = instance_name
+                    specs.append([name_merge, str(cpus), str(cpus), '1', '1', str(ram),
                                   'GCP', machine_type, str(benchmark), id, cpu_type, '2600', operating_system, os_version])
-                    atts.append([instance_name, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
+                    atts.append([name_merge, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
+                    instance_ids[instance_name] = id
                     instance_names[id] = instance_name
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
 
@@ -197,7 +211,14 @@ def main():
         grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]  # create list of dataframe according to groupby
         dict_instances = {}
         for df in grouped_instances:
-            dict_instances[list(df)[0][0]] = df  # create key:value pair of instance name : dataframe
+            inst_name = list(df)[0][0]
+            if inst_name in active_instances :
+                instance_id = instance_ids[inst_name]
+
+            if merge:
+                dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
+            else:
+                dict_instances[inst_name] = df
             df.columns = df.columns.droplevel()  # drop instance_name header
 
         final_list = concat(dict_instances, names=['host_name', 'Datetime'])  # vertical concat, names = index header
@@ -306,6 +327,6 @@ if __name__ == '__main__':
     main()
 
 # display the final amount of time taken
-end_time = timeit.default_timer()
-program_time = end_time-start_time
-print 'Finished in', int(program_time), 'seconds'
+#end_time = timeit.default_timer()
+#program_time = end_time-start_time
+#print 'Finished in', int(program_time), 'seconds'
