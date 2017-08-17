@@ -14,6 +14,8 @@ from datetime import *
 import csv
 import argparse
 
+merge = True
+
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
@@ -151,7 +153,10 @@ def main():
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
                     benchmark = 29.9*float(cpus)
-                    name_merge = instance_name + '-' + id[0:3]
+					if merge == True:
+						name_merge = instance_name + '-' + id[0:3]
+					else:
+						name_merge = instance_name
                     specs.append([name_merge, str(cpus), str(cpus), '1', '1', str(ram),
                                   'GCP', machine_type, str(benchmark), id, cpu_type, '2600', operating_system, os_version])
                     atts.append([name_merge, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
