@@ -11,13 +11,19 @@ set AGENTS=N
 rem **************** edit nothing beyond this point *********************
 
 echo Copyright (c) 2002-2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
+
 set AUTO="f"
 set FILE="f"
+set HELP="f"
 set MANUAL="f"
+set fpath=%~sdp0
+
 IF "%1"=="--auto" set AUTO="t"
 IF "%1"=="-a" set AUTO="t"
 IF "%1"=="--file" set FILE="t"
 IF "%1"=="-f" set FILE="t"
+IF "%1"=="--help" set HELP="t"
+IF "%1"=="-h" set HELP="t"
 IF %FILE%=="t" (
 	set PROJECT_ID=%2
 	set MANUAL="t"
@@ -40,14 +46,20 @@ IF %MANUAL%=="t" (
 	GOTO:EOF
 )
 
-set fpath=%~sdp0
+
 IF %AUTO%=="t" (
-	for /f %%f in ('dir /b %fpath%credentials') do (
-		set PROJECT_ID=%%f 
-		echo __________________Automatically Loading %PROJECT_ID%_____________________________
-		call:discoveryFunc %PROJECT_ID% %HOURS% %AGENTS% 
+	for /f %%f in ('dir /b %fpath%credentials') DO ( 
+		echo __________________Automatically Loading %%f_____________________________
+		call:discoveryFunc %%f %HOURS% %AGENTS% 
 	)
 )
+
+if %HELP%=="t" (
+echo -a / --auto  : load all projects in the credentials folder using the default parameters
+echo -f / --file  : pass in credential file [my-project.json] load specified project using the default parameters.
+echo no arguments : specifiy all of the parameters manually 
+)
+
 GOTO:EOF
 
 :discoveryFunc
