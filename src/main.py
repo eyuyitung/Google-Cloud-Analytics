@@ -97,7 +97,11 @@ def main():
     for project in projects:  # for each project in the list of project dictionaries :
         project['instances'] = []  # add another key : value pair into project dictionary
         project_id = project['projectId']
-        m = api_call(compute.machineTypes(), 'items', {'project': project_id, 'zone': 'us-central1-a'})
+        try:
+            m = api_call(compute.machineTypes(), 'items', {'project': project_id, 'zone': 'us-central1-a'})
+        except:
+            print 'No instances found.'
+            return
         for model in m:
             models.append([model['name'], model['guestCpus'], model['memoryMb']])
         all_zones = api_call(compute.zones(), 'items', {'project': project_id})
@@ -170,7 +174,6 @@ def main():
                     instance_ids[instance_name] = id
                     instance_names[id] = instance_name
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
-        return
         if len(instance_names) < 1:
             return
         dict_metric = {}
