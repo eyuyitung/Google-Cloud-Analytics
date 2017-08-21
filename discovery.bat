@@ -64,7 +64,7 @@ GOTO:EOF
 
 :discoveryFunc
 ECHO  - Step 1 - GCP Discovery
-python %fpath%src\main.py -i %~1 -t %~2 -a %~3 
+py -2 %fpath%src\main.py -i %~1 -t %~2 -a %~3 
 
 if errorlevel 1 GOTO:EOF
 
