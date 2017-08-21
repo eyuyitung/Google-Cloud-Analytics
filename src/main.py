@@ -17,7 +17,7 @@ import argparse
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', dest='project', default='credentials.json',
+parser.add_argument('-i', dest='project', default='Tom-Project.json',
                     help='name of project credential file') # TODO Change or remove default file
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
@@ -29,11 +29,11 @@ args = parser.parse_args()
 hours = int(args.hours)
 agents = str(args.agents)
 project_name = str(args.project)
-merge = args.merge
-if merge == 'y' or merge == 'Y':
-    merge = True
+append = args.merge
+if append == 'y' or append == 'Y':
+    append = True
 else:
-    merge = False
+    append = False
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + os.path.join('credentials', project_name)
 credentials, project = google.auth.default()
@@ -81,9 +81,10 @@ class UTC(tzinfo):
     def dst(self, dt):
         return timedelta(0)
 
-yesterday_midnight_utc = datetime.combine(date.today(), time(0, tzinfo=UTC()))  # because time 0 = midnight yesterday
-
-
+now_utc = datetime.now(tz=UTC())
+nearest_increment_utc = now_utc - timedelta(minutes=now_utc.minute % 5,
+                                            seconds=now_utc.second,
+                                            microseconds=now_utc.microsecond)
 def get_monitoring_client(project):
     return monitoring.Client(project=project, credentials=credentials)
 
@@ -160,7 +161,7 @@ def main():
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
                     benchmark = 29.9*float(cpus)
-                    if merge:
+                    if append:
                         name_merge = instance_name + '-' + id[0:3]
                     else:
                         name_merge = instance_name
@@ -215,7 +216,7 @@ def main():
             if inst_name in active_instances :
                 instance_id = instance_ids[inst_name]
 
-            if merge:
+            if append:
                 dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
             else:
                 dict_instances[inst_name] = df
@@ -252,7 +253,7 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
 def monitoring_call(project_id, metric):  # hours = global variable parsed from discovery.bat
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
-    query = client.query(METRIC, hours=hours, end_time=yesterday_midnight_utc)\
+    query = client.query(METRIC, hours=hours, end_time=nearest_increment_utc)\
         .align(Aligner.ALIGN_MEAN, minutes=5)
     return query.as_dataframe(label='instance_name')
 
@@ -260,7 +261,7 @@ def monitoring_call(project_id, metric):  # hours = global variable parsed from 
 def monitoring_agent_call(project_id, metric):  # hours = global variable parsed from discovery.bat
     client = get_monitoring_client(project_id)
     METRIC = 'agent.googleapis.com/' + agent_metrics[metric]
-    query = client.query(METRIC, hours=hours, end_time=yesterday_midnight_utc)\
+    query = client.query(METRIC, hours=hours, end_time=nearest_increment_utc)\
         .align(Aligner.ALIGN_MEAN, minutes=5)
     frame = query.as_dataframe().filter(regex='used')
     column_names = list(frame)
