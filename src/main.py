@@ -21,7 +21,7 @@ parser.add_argument('-i', dest='project', default='credentials.json',
                     help='name of project credential file') # TODO Change or remove default file
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
-parser.add_argument('-a', dest='append',default='Y',
+parser.add_argument('-a', dest='append',default='N',
                     help='merge instance name + first 3 digits of inst_id')
 args = parser.parse_args()
 hours = int(args.hours)
@@ -188,8 +188,8 @@ def main():
 
         for key in sorted(agent_metrics):  # calls api for each metric, add to dict (metric : dataframe)
             df = (monitoring_agent_call(project_id, key))
-            print key, "done"
-            if df is not 'no_data':
+            if not df.empty:
+                print key, "done"
                 df = df.groupby(axis=1, level=0).sum()
                 dict_metric[key] = df
 
@@ -213,16 +213,20 @@ def main():
         dict_instances = {}
         for df in grouped_instances:
             inst_name = list(df)[0][0]
-            if inst_name in active_instances :
+            if inst_name in active_instances:
                 instance_id = instance_ids[inst_name]
-
-            if append:
-                dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
-            else:
-                dict_instances[inst_name] = df
+                if append:
+                    dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
+                else:
+                    dict_instances[inst_name] = df
             df.columns = df.columns.droplevel()  # drop instance_name header
+        try:
+            final_list = concat(dict_instances, names=['host_name', 'Datetime'])  # vertical concat, names = index header
 
-        final_list = concat(dict_instances, names=['host_name', 'Datetime'])  # vertical concat, names = index header
+        except:
+            final_list = DataFrame({"": []}) # empty dataframe
+        if final_list.empty:
+            print "No instance metric data available for specified timeframe"
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
 
         # fill in inactive instances with empty data
@@ -266,7 +270,7 @@ def monitoring_agent_call(project_id, metric):  # hours = global variable parsed
     try:
         frame = query.as_dataframe().filter(regex='used')
     except:
-        return 'no_data'
+        return DataFrame({"": []})  # return empty dataframe
     column_names = list(frame)
     index = 0
     for name in column_names:
