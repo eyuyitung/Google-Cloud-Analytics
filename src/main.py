@@ -21,15 +21,12 @@ parser.add_argument('-i', dest='project', default='Tom-Project.json',
                     help='name of project credential file') # TODO Change or remove default file
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
-parser.add_argument('-a', dest='agents', default='N',
-                    help='whether or not agents are active in project')
-parser.add_argument('-m', dest='merge',default='Y',
+parser.add_argument('-a', dest='append',default='Y',
                     help='merge instance name + first 3 digits of inst_id')
 args = parser.parse_args()
 hours = int(args.hours)
-agents = str(args.agents)
 project_name = str(args.project)
-append = args.merge
+append = args.append
 if append == 'y' or append == 'Y':
     append = True
 else:
@@ -162,18 +159,20 @@ def main():
                     ram = get_ram(machine_type)
                     benchmark = 29.9*float(cpus)
                     if append:
-                        name_merge = instance_name + '-' + id[0:3]
+                        name_append = instance_name + '-' + id[0:3]
                     else:
-                        name_merge = instance_name
-                    specs.append([name_merge, str(cpus), str(cpus), '1', '1', str(ram),
+                        name_append = instance_name
+                    specs.append([name_append, str(cpus), str(cpus), '1', '1', str(ram),
                                   'GCP', machine_type, str(benchmark), id, cpu_type, '2600', operating_system, os_version])
-                    atts.append([name_merge, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
+                    atts.append([name_append, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
                     instance_ids[instance_name] = id
                     instance_names[id] = instance_name
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
-
+        return
+        if len(instance_names) < 1:
+            return
         dict_metric = {}
         key_metric = []
         for key in sorted(instance_metrics):  # calls api for each metric, add to dict (metric : dataframe)
@@ -186,10 +185,10 @@ def main():
                 df /= 60
             dict_metric[key] = df
 
-        if agents == 'y' or agents == 'Y':
-            for key in sorted(agent_metrics):  # calls api for each metric, add to dict (metric : dataframe)
-                df = (monitoring_agent_call(project_id, key))
-                print key, "done"
+        for key in sorted(agent_metrics):  # calls api for each metric, add to dict (metric : dataframe)
+            df = (monitoring_agent_call(project_id, key))
+            print key, "done"
+            if df is not 'no_data':
                 df = df.groupby(axis=1, level=0).sum()
                 dict_metric[key] = df
 
@@ -263,7 +262,10 @@ def monitoring_agent_call(project_id, metric):  # hours = global variable parsed
     METRIC = 'agent.googleapis.com/' + agent_metrics[metric]
     query = client.query(METRIC, hours=hours, end_time=nearest_increment_utc)\
         .align(Aligner.ALIGN_MEAN, minutes=5)
-    frame = query.as_dataframe().filter(regex='used')
+    try:
+        frame = query.as_dataframe().filter(regex='used')
+    except:
+        return 'no_data'
     column_names = list(frame)
     index = 0
     for name in column_names:
