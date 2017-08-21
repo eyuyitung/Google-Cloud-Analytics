@@ -37,7 +37,7 @@ IF "%1"=="" (
 	set /p HOURS=Please enter your desired sample size in hours: 
 	echo Within the project specified above, do any of the instances contain active stackdriver agents?
 	set /p AGENTS=Please enter [Y/N] : 
-	echo Are there any duplicate instance names across any of the projects? [ Y/N]
+	echo Are there any duplicate instance names across any of the projects?
 	set /p MERGE=Please enter [Y/N] : 
 )
 
@@ -55,9 +55,9 @@ IF %AUTO%=="t" (
 )
 
 if %HELP%=="t" (
-echo -a / --auto  : load all projects in the credentials folder using the default parameters
-echo -f / --file  : pass in credential file [my-project.json] load specified project using the default parameters.
-echo no arguments : specifiy all of the parameters manually 
+	echo -a / --auto  : load all projects in the credentials folder using the default parameters
+	echo -f / --file  : pass in credential file [my-project.json] load specified project using the default parameters.
+	echo no arguments : specifiy all of the parameters manually 
 )
 
 GOTO:EOF
