@@ -17,7 +17,7 @@ import argparse
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', dest='project', default='Tom-Project.json',
+parser.add_argument('-i', dest='project', default='credentials.json',
                     help='name of project credential file') # TODO Change or remove default file
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
@@ -174,8 +174,6 @@ def main():
                     instance_ids[instance_name] = id
                     instance_names[id] = instance_name
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
-        if len(instance_names) < 1:
-            return
         dict_metric = {}
         key_metric = []
         for key in sorted(instance_metrics):  # calls api for each metric, add to dict (metric : dataframe)
