@@ -2,10 +2,10 @@
 
 rem ***************** Edit these default parameters ********************
 rem one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
-set HOURS=168 
+set HOURS=1000 
 
 rem are there any duplicate instance names across any of the projects? (Y/N)
-set APPEND=Y
+set APPEND=N
 rem **************** edit nothing beyond this point *********************
 
 echo Copyright (c) 2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
@@ -37,14 +37,14 @@ IF "%1"=="" (
 )
 
 IF %MANUAL%=="t" (
-	echo __________________Manually Loading %PROJECT_ID%_____________________________
+	echo __________________ Manually Loading %PROJECT_ID% _____________________________
 	call:discoveryFunc %PROJECT_ID% %HOURS% %APPEND%
 )
 
 
 IF %AUTO%=="t" (
 	for /f %%i in ('dir /b "%fpath%credentials\*.json"') do (
-		echo __________________Automatically Loading %%i_____________________________
+		echo __________________ Automatically Loading %%i _____________________________
 		call:discoveryFunc %%i %HOURS% %APPEND% 
 	)
 )
@@ -58,8 +58,15 @@ if %HELP%=="t" (
 GOTO:EOF
 
 :discoveryFunc
+
+echo Clearing previous config...
+for /f %%i in ('dir /b %fpath%conf') do if not %%i == .gitignore 2>NUL del /q %fpath%conf\%%i
+2>NUL del /q %fpath%workload.csv
+2>NUL del /q %fpath%attributes.csv
+2>NUL del /q %fpath%gcp_config.csv
+
 ECHO  - Step 1 - GCP Discovery
-python %fpath%src\main.py -i %~1 -t %~2 -a %~3 
+py -2 %fpath%src\main.py -i %~1 -t %~2 -a %~3 
 
 if errorlevel 1 GOTO:EOF
 

@@ -18,10 +18,10 @@ print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', dest='project', default='credentials.json',
-                    help='name of project credential file') # TODO Change or remove default file
+                    help='name of project credential file')
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
-parser.add_argument('-a', dest='append',default='N',
+parser.add_argument('-a', dest='append', default='N',
                     help='merge instance name + first 3 digits of inst_id')
 args = parser.parse_args()
 hours = int(args.hours)
@@ -57,14 +57,11 @@ agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
                  'Percent Memory Used': 'memory/percent_used',
                  'Raw Disk Space Usage': 'disk/bytes_used'}
 
-
-
+models = []
 
 if hours > 1008:
     print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
     hours = 1008
-
-models = []
 
 
 class UTC(tzinfo):
@@ -82,6 +79,7 @@ now_utc = datetime.now(tz=UTC())
 nearest_increment_utc = now_utc - timedelta(minutes=now_utc.minute % 5,
                                             seconds=now_utc.second,
                                             microseconds=now_utc.microsecond)
+
 def get_monitoring_client(project):
     return monitoring.Client(project=project, credentials=credentials)
 
