@@ -8,12 +8,13 @@ rem are there any duplicate instance names across any of the projects? (Y/N)
 set APPEND=N
 rem **************** edit nothing beyond this point *********************
 
-echo Copyright (c) 2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
+echo Copyright (c) 2017 Cirba Inc. D/B/A DensIFy. All Rights Reserved.
 
 set AUTO="f"
 set FILE="f"
 set HELP="f"
 set MANUAL="f"
+set ERROR="f"
 set fpath=%~sdp0
 
 IF "%1"=="--auto" set AUTO="t"
@@ -39,6 +40,7 @@ IF "%1"=="" (
 IF %MANUAL%=="t" (
 	echo __________________ Manually Loading %PROJECT_ID% _____________________________
 	call:discoveryFunc %PROJECT_ID% %HOURS% %APPEND%
+	GOTO:EOF
 )
 
 
@@ -47,19 +49,21 @@ IF %AUTO%=="t" (
 		echo __________________ Automatically Loading %%i _____________________________
 		call:discoveryFunc %%i %HOURS% %APPEND% 
 	)
+	set AUTO="f"
+	GOTO:END  
 )
 
-if %HELP%=="t" (
+IF %HELP%=="t" (
 	echo -a / --auto  : load all projects in the credentials folder using the default parameters
 	echo -f / --file  : pass in credential file [my-project.json] load specified project using the default parameters.
-	echo no arguments : specifiy all of the parameters manually 
+	echo no arguments : specIFiy all of the parameters manually 
+	GOTO:EOF
 )
 
-GOTO:END
 
 :discoveryFunc
 
-echo Clearing previous config...
+echo Clearing previous config ...
 for /f %%i in ('dir /b %fpath%conf') do if not %%i == .gitignore 2>NUL del /q %fpath%conf\%%i
 2>NUL del /q %fpath%workload.csv
 2>NUL del /q %fpath%attributes.csv
@@ -69,31 +73,31 @@ for /f %%i in ('dir /b %fpath%conf') do if not %%i == .gitignore 2>NUL del /q %f
 ECHO  - Step 1 - GCP Discovery
 py -2 %fpath%src\main.py -i %~1 -t %~2 -a %~3 
 
-if errorlevel 1 GOTO:END
+IF errorlevel 1 GOTO:END
 
 ECHO  - Step 2 - GCP Config
 move %fpath%gcp_config.csv %fpath%conf\gcp_config.csv
 move %fpath%attributes.csv %fpath%conf\attributes.csv
 move %fpath%workload.csv %fpath%conf\workload.csv
-if errorlevel 1 GOTO:END
+IF errorlevel 1 GOTO:END 
 
 ECHO  - Step 3 - Creating Manifest
 call "%CIRBA_HOME%\bin\audit-converter.bat" -m %fpath%conf\ "GCP"
-if errorlevel 1 GOTO:END
+IF errorlevel 1 GOTO:END
 
 ECHO  - Step 4 - Creating Repository
 call "%CIRBA_HOME%\bin\audit-converter.bat" %fpath%conf\ %fpath%repo\
-if errorlevel 1 GOTO:END
+IF errorlevel 1 GOTO:END
 
 ECHO  - Step 5 - Loading Repository
 call "%CIRBA_HOME%\bin\load-repository.bat" %fpath%repo\ -o
-if errorlevel 1 GOTO:END
+IF errorlevel 1 GOTO:END
 
 ECHO  - Step 6 - Import Attributes
 call "%CIRBA_HOME%\bin\data-tools.bat" ImportAttributes -f %fpath%conf\
-if errorlevel 1 GOTO:END
-GOTO:END
+IF errorlevel 1 GOTO:END
 
 :END
-if errorlevel 1 echo Exiting program...
+IF %AUTO%=="t" GOTO:EOF
+IF errorlevel 1 echo Exiting program ...
 pause

@@ -17,9 +17,9 @@ import argparse
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', dest='project', default='credentials.json',
+parser.add_argument('-i', dest='project', default='test.json',
                     help='name of project credential file')
-parser.add_argument('-t', dest='hours', default='24',
+parser.add_argument('-t', dest='hours', default='96',
                     help='amount of hours to receive data from')
 parser.add_argument('-a', dest='append', default='N',
                     help='merge instance name + first 3 digits of inst_id')
@@ -87,7 +87,7 @@ def get_monitoring_client(project):
 def main():
     instance_names = {}
     instance_ids = {}
-    active_instances = []
+    available_instances = []
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
     projects = api_call(resource_manager.projects(), 'projects', [])
@@ -148,10 +148,10 @@ def main():
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = instance_data['creationTimestamp']
                     instance_name = (instance_data['name'])
+                    available_instances.append(instance_name)
                     status = instance_data['status']
                     if status == 'RUNNING':
                         status = 'Running'
-                        active_instances.append(instance_name)
                     else:
                         status = 'Offline'
                     cpu_type = instance_data['cpuPlatform']
@@ -179,13 +179,14 @@ def main():
         key_metric = []
         for key in sorted(instance_metrics):  # calls api for each metric, add to dict (metric : dataframe)
             df = (monitoring_call(project_id, key))
-            print key, "done"
-            df = df.groupby(axis=1, level=0).sum()  # sum if duplicate headers
-            if key == 'CPU Utilization':  # google output scale: 0-1, Densify import scale: 1-100
-                df *= 100
-            else:  # google output measurement: per minute, Densify import measurement: per second
-                df /= 60
-            dict_metric[key] = df
+            if not df.empty:
+                print key, "done"
+                df = df.groupby(axis=1, level=0).sum()  # sum if duplicate headers
+                if key == 'CPU Utilization':  # google output scale: 0-1, Densify import scale: 1-100
+                    df *= 100
+                else:  # google output measurement: per minute, Densify import measurement: per second
+                    df /= 60
+                dict_metric[key] = df
 
         for key in sorted(agent_metrics):  # calls api for each metric, add to dict (metric : dataframe)
             df = (monitoring_agent_call(project_id, key))
@@ -193,41 +194,40 @@ def main():
                 print key, "done"
                 df = df.groupby(axis=1, level=0).sum()
                 dict_metric[key] = df
+        if len(dict_metric) > 0:
+            for name in total_metrics:  # extrapolates total i/o from api metrics
+                total = []
+                for key in dict_metric:
+                    if all(x in key for x in name):  # if key contains all of total_metrics tuple
+                        total.append(dict_metric[key])
+                dict_metric[name] = total[0].add(total[1], fill_value=0, level=0)
 
-        for name in total_metrics:  # extrapolates total i/o from api metrics
-            total = []
-            for key in dict_metric:
-                if all(x in key for x in name):  # if key contains all of total_metrics tuple
-                    total.append(dict_metric[key])
-            dict_metric[name] = total[0].add(total[1], fill_value=0, level=0)
+            for key in dict_metric:  # adds metric label to dataframe and converts dict to list
+                df = dict_metric[key]
+                key_label = [key] * df.shape[1]
+                cols = list(zip(df.columns, key_label))
+                df.columns = MultiIndex.from_tuples(cols)
+                key_metric.append(df)
 
-        for key in dict_metric:  # adds metric label to dataframe and converts dict to list
-            df = dict_metric[key]
-            key_label = [key] * df.shape[1]
-            cols = list(zip(df.columns, key_label))
-            df.columns = MultiIndex.from_tuples(cols)
-            key_metric.append(df)
-
-        sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)  # horizontal concat and sort by instance name
-        gb = sorted_metrics.groupby(axis=1, level=0)  # group by instance name
-        grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]  # create list of dataframe according to groupby
-        dict_instances = {}
-        for df in grouped_instances:
-            inst_name = list(df)[0][0]
-            if inst_name in active_instances:
-                instance_id = instance_ids[inst_name]
-                if append:
-                    dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
-                else:
-                    dict_instances[inst_name] = df
-            df.columns = df.columns.droplevel()  # drop instance_name header
+            sorted_metrics = concat(key_metric, axis=1).sort_index(axis=1, level=0)  # horizontal concat and sort by instance name
+            gb = sorted_metrics.groupby(axis=1, level=0)  # group by instance name
+            grouped_instances = [gb.get_group(x) for x in sorted(gb.groups)]  # create list of dataframe according to groupby
+            dict_instances = {}
+            for df in grouped_instances:
+                inst_name = list(df)[0][0]
+                if inst_name in instance_ids.keys():
+                    instance_id = instance_ids[inst_name]
+                    if append:
+                        dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
+                    else:
+                        dict_instances[inst_name] = df
+                df.columns = df.columns.droplevel()  # drop instance_name header
         try:
             final_list = concat(dict_instances, names=['host_name', 'Datetime'])  # vertical concat, names = index header
-
         except:
             final_list = DataFrame({"": []}) # empty dataframe
         if final_list.empty:
-            print "No instance metric data available for specified timeframe"
+            print "No currently active instances"
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
 
         # fill in inactive instances with empty data
