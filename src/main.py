@@ -116,8 +116,11 @@ def main():
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
                 for instance_data in current_instances:  # loop through all instances to create lists of their configs
-                    os_version = compute.disks().get(project=project_id, zone=zone_name, disk=instance_data['name']).execute()['sourceImage'].split('/')
-                    os_version = os_version[len(os_version)-1]
+                    try:
+                        os_version = compute.disks().get(project=project_id, zone=zone_name, disk=instance_data['name']).execute()['sourceImage'].split('/')
+                        os_version = os_version[len(os_version)-1]
+                    except:
+                        os_version = 'linux'
                     if 'windows' in os_version:
                         operating_system = 'Windows'
                     else:
