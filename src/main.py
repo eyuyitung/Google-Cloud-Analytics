@@ -15,19 +15,18 @@ from datetime import *
 import csv
 import argparse
 
-print 'Retrieving credentials ...'
-
+# Parsing inputted arguments from batch
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', dest='project', default='credentials.json',
                     help='name of project credential file')
-parser.add_argument('-t', dest='hours', default='1000',
+parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
 parser.add_argument('-a', dest='append', default='Y',
                     help='merge instance name + first 3 digits of inst_id')
 parser.add_argument('-d', dest='deleted', default='Y',
                     help='retrieve data from deleted instances')
 parser.add_argument('-e', dest='end', default='Y',
-                    help='retrieve data from deleted instances')  # TODO make choice of whether to recieve data from nearest 5 minutes or midnight last night
+                    help='retrieve data until midnight last night')
 args = parser.parse_args()
 hours = int(args.hours)
 project_name = str(args.project)
@@ -46,6 +45,10 @@ if end_midnight == 'y' or end_midnight == 'Y':
     end_midnight = True
 else:
     end_midnight = False
+
+# Setting credentials as environment
+print 'Retrieving credentials ...'
+
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + os.path.join('credentials', project_name)
 try:
@@ -57,6 +60,7 @@ except:
 resource_manager = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
 compute = discovery.build('compute', 'v1', credentials=credentials)
 
+# workload metrics to loop through
 instance_metrics = {'CPU Utilization': 'instance/cpu/utilization',  # concatenates with compute api base url
                     'Raw Disk Read Utilization': 'instance/disk/read_bytes_count',
                     'Raw Disk Write Utilization': 'instance/disk/write_bytes_count',
@@ -76,13 +80,13 @@ agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
                  'Percent Memory Used': 'memory/percent_used',
                  'Raw Disk Space Usage': 'disk/bytes_used'}
 
-models = []
+models = []  # global list to hold all machine types
 
 if hours > 1008:
     print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
     hours = 1008
 
-
+# set the time to recieve data until
 class UTC(tzinfo):
     """UTC"""
     def utcoffset(self, dt):
@@ -106,11 +110,11 @@ else:
 def get_monitoring_client(project):
     return monitoring.Client(project=project, credentials=credentials)
 
-instance_names = {}
-instance_ids = {}
+instance_names = {}  # dictionary to find any instance name using its instance id (id:name)
+instance_ids = {}  # reverse of the above (name:id)
 
 def main():
-    available_instances = []
+    available_instances = []  # list of instances that are currently in the project
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
     projects = api_call(resource_manager.projects(), 'projects', [])
@@ -139,6 +143,7 @@ def main():
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
                 for instance_data in current_instances:  # loop through all instances to create lists of their configs
+                    # get os data
                     try:
                         os_version = compute.disks().get(project=project_id, zone=zone_name, disk=instance_data['name']).execute()['sourceImage'].split('/')
                         os_version = os_version[len(os_version)-1]
@@ -148,19 +153,17 @@ def main():
                         operating_system = 'Windows'
                     else:
                         operating_system = 'Linux'
+                    # get metadata etc.
                     if 'items' in instance_data['metadata'].keys():
                         metadata = instance_data['metadata']['items']
                     else:
                         metadata = ''
                     new_metadata = {}
                     group = ''
-                    owner = ''
                     for data in metadata:  # take data with certain keys into variables, and the rest, if less than 250 characters, into list
                         if data['key'] == 'created-by':
                             group = data['value'].split('/')
                             group = group[len(group) - 1]
-                        elif data['key'] == 'owner':
-                            owner = data['value']
                         elif len(data['key']+data['value']) < 250:
                             new_metadata[str(data['key'])] = str(data['value'])
                     if new_metadata == {}:
@@ -168,6 +171,7 @@ def main():
                     metadata = str(new_metadata).replace('"', '""')
                     if len(metadata) > 250:
                         metadata = ''
+                    # get various attributes
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = instance_data['creationTimestamp']
                     instance_name = (instance_data['name'])
@@ -178,8 +182,8 @@ def main():
                         status = 'Offline'
                     cpu_type = instance_data['cpuPlatform']
                     networkIP = instance_data['networkInterfaces'][0]['networkIP']
-                    machineurl = instance_data['machineType']
                     id = instance_data['id']
+                    machineurl = instance_data['machineType']
                     segments = machineurl.split('/')
                     machine_type = segments[len(segments) - 1]
                     cpus = get_cpus(machine_type)
@@ -189,12 +193,14 @@ def main():
                         name_append = instance_name + '-' + id[0:3]
                     else:
                         name_append = instance_name
+                    # put a list of attributes into a list item
                     specs.append([name_append, str(cpus), str(cpus), '1', '1', str(ram),
                                   'GCP', machine_type, str(benchmark), id, cpu_type, '2600', operating_system, os_version])
-                    atts.append([name_append, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
+                    atts.append([name_append, id, networkIP, creation_date, group, '"'+metadata+'"',
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
                     available_instances.append(instance_name)
+
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
         dict_metric = {}
         key_metric = []
@@ -263,7 +269,7 @@ def main():
             new_names = get_names(atts)
             for instance in new_names:
                 atts.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
-                specs.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
+                specs.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
 
     to_csv_list(specs, 'gcp_config.csv', 'a')
     to_csv_list(atts, 'attributes.csv', 'b')
@@ -284,12 +290,12 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
     return return_res
 
 
-def monitoring_call(project_id, metric):  # hours = global variable parsed from discovery.bat
+def monitoring_call(project_id, metric):  # method for pulling monitoring data from api
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
     query = client.query(METRIC, hours=hours, end_time=nearest_increment_utc)\
-        .align(Aligner.ALIGN_MEAN, minutes=5)
-    if instance_names == {}:
+        .align(Aligner.ALIGN_MEAN, minutes=5)  # hours = global variable parsed from discovery.bat
+    if instance_names == {}:  # if instance_names is not defined, define it and instance_ids
         column_names = list(query.as_dataframe(labels=['instance_name','instance_id']))
         for name in column_names:
             instance_names[name[1]] = name[0]
@@ -297,18 +303,18 @@ def monitoring_call(project_id, metric):  # hours = global variable parsed from 
     return query.as_dataframe(label='instance_name')
 
 
-def monitoring_agent_call(project_id, metric):  # hours = global variable parsed from discovery.bat
+def monitoring_agent_call(project_id, metric):  # method for pulling monitoring agent data from api
     client = get_monitoring_client(project_id)
     METRIC = 'agent.googleapis.com/' + agent_metrics[metric]
     query = client.query(METRIC, hours=hours, end_time=nearest_increment_utc)\
-        .align(Aligner.ALIGN_MEAN, minutes=5)
+        .align(Aligner.ALIGN_MEAN, minutes=5)  # hours = global variable parsed from discovery.bat
     try:
         frame = query.as_dataframe().filter(regex='used')
     except:
         return DataFrame({"": []})  # return empty dataframe
     column_names = list(frame)
     index = 0
-    for name in column_names:
+    for name in column_names:  # convert the column name from being instance id to instance name
         if instance_names[name[3]]:
             column_names[index] = instance_names[name[3]]
         else:
@@ -325,7 +331,7 @@ def to_csv_list(lst, file_name, file_type):  # print any list of lists to a csv 
                     'HW Total Memory,HW Manufacturer,HW Model,BM CINT2006 Rate,HW Serial Number,'
                     'HW CPU Architecture,HW CPU Speed,OS Name,OS Version\n')
         if file_type == 'b':
-            f.write('host_name,Instance ID,Instance IP,Launch Time, Instance Group, Instance Owner, Instance Tags,'
+            f.write('host_name,Instance ID,Instance IP,Launch Time, Instance Group, Instance Tags,'
                     'Virtual Datacenter,Virtual Cluster,Virtual Domain,Virtual Technology,'
                     'PS Capacity,Power State\n')
         for item in lst:
@@ -355,6 +361,7 @@ def get_names(attr):  # look through the workload csv to find instances that do 
         lst = (list(reader))
     f.close()
     new_names = []
+    # see if instance has been defined already (is active), if not, add it to the list
     for metrics in range(1, len(lst), hours*12):  # start at first row of data, stop after all instances have been looped, step by one instance each time
         instance_is_defined = False
         for instance in attr:
