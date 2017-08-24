@@ -4,6 +4,7 @@
 
 print 'Importing libraries ...'
 
+import sys
 from google.cloud import monitoring
 from google.cloud.monitoring import Aligner
 from googleapiclient import discovery
@@ -17,23 +18,41 @@ import argparse
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', dest='project', default='test.json',
+parser.add_argument('-i', dest='project', default='credentials.json',
                     help='name of project credential file')
-parser.add_argument('-t', dest='hours', default='96',
+parser.add_argument('-t', dest='hours', default='1000',
                     help='amount of hours to receive data from')
-parser.add_argument('-a', dest='append', default='N',
+parser.add_argument('-a', dest='append', default='Y',
                     help='merge instance name + first 3 digits of inst_id')
+parser.add_argument('-d', dest='deleted', default='Y',
+                    help='retrieve data from deleted instances')
+parser.add_argument('-e', dest='end', default='Y',
+                    help='retrieve data from deleted instances')  # TODO make choice of whether to recieve data from nearest 5 minutes or midnight last night
 args = parser.parse_args()
 hours = int(args.hours)
 project_name = str(args.project)
 append = args.append
+read_deleted = args.deleted
+end_midnight = args.end
 if append == 'y' or append == 'Y':
     append = True
 else:
     append = False
+if read_deleted == 'y' or read_deleted == 'Y':
+    read_deleted = True
+else:
+    read_deleted = False
+if end_midnight == 'y' or end_midnight == 'Y':
+    end_midnight = True
+else:
+    end_midnight = False
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + os.path.join('credentials', project_name)
-credentials, project = google.auth.default()
+try:
+    credentials, project = google.auth.default()
+except:
+    print 'Invalid credentials.'
+    sys.exit(1)
 
 resource_manager = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
 compute = discovery.build('compute', 'v1', credentials=credentials)
@@ -75,18 +94,22 @@ class UTC(tzinfo):
     def dst(self, dt):
         return timedelta(0)
 
-now_utc = datetime.now(tz=UTC())
-nearest_increment_utc = now_utc - timedelta(minutes=now_utc.minute % 5,
-                                            seconds=now_utc.second,
-                                            microseconds=now_utc.microsecond)
+if end_midnight:
+    nearest_increment_utc = datetime.combine(date.today(), time(0, tzinfo=UTC()))  # because time 0 = midnight yesterday
+else:
+    now_utc = datetime.now(tz=UTC())
+    nearest_increment_utc = now_utc - timedelta(minutes=now_utc.minute % 5,
+                                                seconds=now_utc.second,
+                                                microseconds=now_utc.microsecond)
+
 
 def get_monitoring_client(project):
     return monitoring.Client(project=project, credentials=credentials)
 
+instance_names = {}
+instance_ids = {}
 
 def main():
-    instance_names = {}
-    instance_ids = {}
     available_instances = []
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
@@ -148,7 +171,6 @@ def main():
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = instance_data['creationTimestamp']
                     instance_name = (instance_data['name'])
-                    available_instances.append(instance_name)
                     status = instance_data['status']
                     if status == 'RUNNING':
                         status = 'Running'
@@ -172,8 +194,7 @@ def main():
                     atts.append([name_append, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
                     disk_index += 1
-                    instance_ids[instance_name] = id
-                    instance_names[id] = instance_name
+                    available_instances.append(instance_name)
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
         dict_metric = {}
         key_metric = []
@@ -182,7 +203,7 @@ def main():
             if not df.empty:
                 print key, "done"
                 df = df.groupby(axis=1, level=0).sum()  # sum if duplicate headers
-                if key == 'CPU Utilization':  # google output scale: 0-1, Densify import scale: 1-100
+                if key == 'CPU Utilization':  # google output scale: 0-1, Densify import scale: 0-100
                     df *= 100
                 else:  # google output measurement: per minute, Densify import measurement: per second
                     df /= 60
@@ -215,7 +236,14 @@ def main():
             dict_instances = {}
             for df in grouped_instances:
                 inst_name = list(df)[0][0]
-                if inst_name in instance_ids.keys():
+                if read_deleted == False:
+                    if inst_name in available_instances:
+                        instance_id = instance_ids[inst_name]
+                        if append:
+                            dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
+                        else:
+                            dict_instances[inst_name] = df
+                else:
                     instance_id = instance_ids[inst_name]
                     if append:
                         dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
@@ -231,10 +259,11 @@ def main():
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
 
         # fill in inactive instances with empty data
-        new_names = get_names(atts)
-        for instance in new_names:
-            atts.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
-            specs.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
+        if read_deleted == False:
+            new_names = get_names(atts)
+            for instance in new_names:
+                atts.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
+                specs.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
 
     to_csv_list(specs, 'gcp_config.csv', 'a')
     to_csv_list(atts, 'attributes.csv', 'b')
@@ -260,6 +289,11 @@ def monitoring_call(project_id, metric):  # hours = global variable parsed from 
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
     query = client.query(METRIC, hours=hours, end_time=nearest_increment_utc)\
         .align(Aligner.ALIGN_MEAN, minutes=5)
+    if instance_names == {}:
+        column_names = list(query.as_dataframe(labels=['instance_name','instance_id']))
+        for name in column_names:
+            instance_names[name[1]] = name[0]
+            instance_ids[name[0]] = name[1]
     return query.as_dataframe(label='instance_name')
 
 
@@ -321,7 +355,7 @@ def get_names(attr):  # look through the workload csv to find instances that do 
         lst = (list(reader))
     f.close()
     new_names = []
-    for metrics in range(1, len(lst), hours*12):
+    for metrics in range(1, len(lst), hours*12):  # start at first row of data, stop after all instances have been looped, step by one instance each time
         instance_is_defined = False
         for instance in attr:
             if str(lst[metrics][0]) == str(instance[0]):

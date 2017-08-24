@@ -6,9 +6,12 @@ set HOURS=1000
 
 rem are there any duplicate instance names across any of the projects? (Y/N)
 set APPEND=N
+
+rem would you like to keep retrieving deleted instances? (Y/N)
+set DELETED=N
 rem **************** edit nothing beyond this point *********************
 
-echo Copyright (c) 2017 Cirba Inc. D/B/A DensIFy. All Rights Reserved.
+echo Copyright (c) 2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
 
 set AUTO="f"
 set FILE="f"
@@ -35,6 +38,8 @@ IF "%1"=="" (
 	set /p HOURS=Please enter your desired sample size in hours: 
 	echo Are there any duplicate instance names across any of the projects?
 	set /p APPEND=Please enter [Y/N] : 
+	echo Would you like to retrieve data from deleted instances?
+	set /p DELETED=Please enter [Y/N] : 
 )
 
 IF %MANUAL%=="t" (
@@ -56,7 +61,7 @@ IF %AUTO%=="t" (
 IF %HELP%=="t" (
 	echo -a / --auto  : load all projects in the credentials folder using the default parameters
 	echo -f / --file  : pass in credential file [my-project.json] load specified project using the default parameters.
-	echo no arguments : specIFiy all of the parameters manually 
+	echo no arguments : specifiy all of the parameters manually 
 	GOTO:EOF
 )
 
@@ -71,7 +76,7 @@ for /f %%i in ('dir /b %fpath%conf') do if not %%i == .gitignore 2>NUL del /q %f
 
 
 ECHO  - Step 1 - GCP Discovery
-py -2 %fpath%src\main.py -i %~1 -t %~2 -a %~3 
+py -2 %fpath%src\main.py -i %~1 -t %~2 -a %~3 -d %DELETED%
 
 IF errorlevel 1 GOTO:END
 
