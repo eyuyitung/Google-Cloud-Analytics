@@ -18,7 +18,7 @@ import argparse
 # Parsing inputted arguments from batch
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-i', dest='project', default='kohls-mobile.json',
+parser.add_argument('-i', dest='project', default='credentials.json',
                     help='name of project credential file')
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
