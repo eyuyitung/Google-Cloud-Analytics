@@ -157,11 +157,11 @@ def main():
                     else:
                         operating_system = 'Linux'
                     # get metadata etc.
-                    if 'items' in instance_data['metadata'].keys():
+                    if 'items' in instance_data['metadata'].keys(): # get all metadata from api call
                         metadata = instance_data['metadata']['items']
                     else:
                         metadata = ''
-                    new_metadata = {}
+                    new_metadata = {} # dict to hold metadata in dictionary (name:attribute instead of key:name, value:attribute)
                     group = ''
                     for data in metadata:  # take data with certain keys into variables, and the rest, if less than 250 characters, into list
                         if data['key'] == 'created-by':
@@ -171,7 +171,7 @@ def main():
                             new_metadata[str(data['key'])] = str(data['value'])
                     if new_metadata == {}:
                         new_metadata = ''
-                    metadata = str(new_metadata).replace('"', '""')
+                    metadata = str(new_metadata).replace('"', '""') # all quotes formatted to csv as to not mess with quotes surrounding
                     if len(metadata) > 250:
                         metadata = ''
                     # get various attributes
@@ -341,7 +341,7 @@ def to_csv_list(lst, file_name, file_type):  # print any list of lists to a csv 
 
 def get_cpus(model):  # function to retrieve amount of CPUs based on machine type from API
     if model.split('-')[0] == 'custom':
-        return model.split('-')[1]
+        return model.split('-')[1] # from template custom-[cpus]-[ram]
     for row in models:
         if row[0] == model:
             return row[1]
@@ -349,7 +349,7 @@ def get_cpus(model):  # function to retrieve amount of CPUs based on machine typ
 
 def get_ram(model):  # function to retrieve amount of RAM based on machine type from API
     if model.split('-')[0] == 'custom':
-        return float(model.split('-')[2])
+        return float(model.split('-')[2]) # from template custom-[cpus]-[ram]
     for row in models:
         if row[0] == model:
             return row[2]
