@@ -17,9 +17,9 @@ import argparse
 print 'Retrieving credentials ...'
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', dest='project', default='test.json',
+parser.add_argument('-i', dest='project', default='kohls-mobile.json',
                     help='name of project credential file')
-parser.add_argument('-t', dest='hours', default='96',
+parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
 parser.add_argument('-a', dest='append', default='N',
                     help='merge instance name + first 3 digits of inst_id')
@@ -57,8 +57,9 @@ agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
                  'Percent Memory Used': 'memory/percent_used',
                  'Raw Disk Space Usage': 'disk/bytes_used'}
 
-models = []
-
+models = []  # holds all default system configurations found in us-central1-a
+instance_names = {}  # dict of instance id : instance name
+available_instances = []  # list of all non-deleted instances by name
 if hours > 1008:
     print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
     hours = 1008
@@ -75,22 +76,21 @@ class UTC(tzinfo):
     def dst(self, dt):
         return timedelta(0)
 
-now_utc = datetime.now(tz=UTC())
+now_utc = datetime.now(tz=UTC())  # creates datetime object at closest 5 min increment UTC (GMT)
 nearest_increment_utc = now_utc - timedelta(minutes=now_utc.minute % 5,
                                             seconds=now_utc.second,
                                             microseconds=now_utc.microsecond)
 
-def get_monitoring_client(project):
+
+def get_monitoring_client(project):  # returns stackdriver monitoring Client object using project
     return monitoring.Client(project=project, credentials=credentials)
 
 
 def main():
-    instance_names = {}
-    instance_ids = {}
-    available_instances = []
+    instance_ids = {}  # dict of instance name : instance id
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
-    projects = api_call(resource_manager.projects(), 'projects', [])
+    projects = api_call(resource_manager.projects(), 'projects', [])  # TODO Program untested with multiple projects
     print "Found %d projects" % len(projects)
     for project in projects:  # for each project in the list of project dictionaries :
         project['instances'] = []  # add another key : value pair into project dictionary
@@ -112,12 +112,12 @@ def main():
             if current_instances is not None and len(current_instances) > 0:
                 project['instances'].extend(current_instances)
                 # retrieve configs and store them in 'specs'
-                disk_index = 0
                 for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
-                for instance_data in current_instances:  # loop through all instances to create lists of their configs
+                for disk_index, instance_data in enumerate(current_instances):  # loop through all instances to create lists of their config
                     try:
-                        os_version = compute.disks().get(project=project_id, zone=zone_name, disk=instance_data['name']).execute()['sourceImage'].split('/')
+                        os_version = compute.disks().get(project=project_id, zone=zone_name, disk=instance_data['name'])
+                        os_version = os_version.execute()['sourceImage'].split('/')
                         os_version = os_version[len(os_version)-1]
                     except:
                         os_version = 'linux'
@@ -132,7 +132,7 @@ def main():
                     new_metadata = {}
                     group = ''
                     owner = ''
-                    for data in metadata:  # take data with certain keys into variables, and the rest, if less than 250 characters, into list
+                    for data in metadata:  # take data with certain keys into variables, otherwise, if <250 characters, into new_metadata
                         if data['key'] == 'created-by':
                             group = data['value'].split('/')
                             group = group[len(group) - 1]
@@ -148,7 +148,6 @@ def main():
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = instance_data['creationTimestamp']
                     instance_name = (instance_data['name'])
-                    available_instances.append(instance_name)
                     status = instance_data['status']
                     if status == 'RUNNING':
                         status = 'Running'
@@ -157,23 +156,23 @@ def main():
                     cpu_type = instance_data['cpuPlatform']
                     networkIP = instance_data['networkInterfaces'][0]['networkIP']
                     machineurl = instance_data['machineType']
-                    id = instance_data['id']
+                    instance_id = instance_data['id']
                     segments = machineurl.split('/')
                     machine_type = segments[len(segments) - 1]
                     cpus = get_cpus(machine_type)
                     ram = get_ram(machine_type)
                     benchmark = 29.9*float(cpus)
                     if append:
-                        name_append = instance_name + '-' + id[0:3]
+                        name_append = instance_name + '-' + instance_id[0:3]
                     else:
                         name_append = instance_name
                     specs.append([name_append, str(cpus), str(cpus), '1', '1', str(ram),
-                                  'GCP', machine_type, str(benchmark), id, cpu_type, '2600', operating_system, os_version])
-                    atts.append([name_append, id, networkIP, creation_date, group, owner, '"'+metadata+'"',
+                                  'GCP', machine_type, str(benchmark), instance_id, cpu_type, '2600', operating_system, os_version])
+                    atts.append([name_append, instance_id, networkIP, creation_date, group, owner, '"'+metadata+'"',
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
-                    disk_index += 1
-                    instance_ids[instance_name] = id
-                    instance_names[id] = instance_name
+                    instance_ids[instance_name] = instance_id
+                    instance_names[instance_id] = instance_name
+                    available_instances.append(instance_name)
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
         dict_metric = {}
         key_metric = []
@@ -194,6 +193,7 @@ def main():
                 print key, "done"
                 df = df.groupby(axis=1, level=0).sum()
                 dict_metric[key] = df
+
         if len(dict_metric) > 0:
             for name in total_metrics:  # extrapolates total i/o from api metrics
                 total = []
@@ -272,14 +272,15 @@ def monitoring_agent_call(project_id, metric):  # hours = global variable parsed
         frame = query.as_dataframe().filter(regex='used')
     except:
         return DataFrame({"": []})  # return empty dataframe
-    column_names = list(frame)
-    index = 0
-    for name in column_names:
-        if instance_names[name[3]]:
-            column_names[index] = instance_names[name[3]]
-        else:
-            column_names[index] = ''
-        index += 1
+    column_names = list(frame) # list of tuples from multi-index (per column)
+    for index, name in enumerate(sorted(column_names)):
+        try:
+            if instance_names[name[3]] in available_instances:
+                column_names[index] = instance_names[name[3]]
+            else:
+                column_names[index] = ''
+        except:
+            print 'instance id', name[3], 'not valid'
     frame.columns = column_names
     return frame
 

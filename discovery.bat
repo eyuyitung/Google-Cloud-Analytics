@@ -2,7 +2,7 @@
 
 rem ***************** Edit these default parameters ********************
 rem one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
-set HOURS=1000 
+set HOURS=1 
 
 rem are there any duplicate instance names across any of the projects? (Y/N)
 set APPEND=N
@@ -16,7 +16,7 @@ set HELP="f"
 set MANUAL="f"
 set ERROR="f"
 set fpath=%~sdp0
-
+set FILES="t"
 IF "%1"=="--auto" set AUTO="t"
 IF "%1"=="-a" set AUTO="t"
 IF "%1"=="--file" set FILE="t"
@@ -31,7 +31,7 @@ IF %FILE%=="t" (
 IF "%1"=="" (
 	set MANUAL="t"
 	set /p PROJECT_ID=Please enter full credential file name: [ex. my-project-123.json] 
-	echo one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks [1008 hours]
+	echo one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks [168 hours]
 	set /p HOURS=Please enter your desired sample size in hours: 
 	echo Are there any duplicate instance names across any of the projects?
 	set /p APPEND=Please enter [Y/N] : 
@@ -56,7 +56,7 @@ IF %AUTO%=="t" (
 IF %HELP%=="t" (
 	echo -a / --auto  : load all projects in the credentials folder using the default parameters
 	echo -f / --file  : pass in credential file [my-project.json] load specified project using the default parameters.
-	echo no arguments : specIFiy all of the parameters manually 
+	echo no arguments : specifiy all of the parameters manually 
 	GOTO:EOF
 )
 
@@ -79,8 +79,10 @@ ECHO  - Step 2 - GCP Config
 move %fpath%gcp_config.csv %fpath%conf\gcp_config.csv
 move %fpath%attributes.csv %fpath%conf\attributes.csv
 move %fpath%workload.csv %fpath%conf\workload.csv
-IF errorlevel 1 GOTO:END 
-
+IF errorlevel 1 (
+	GOTO:END 
+	set FILES="f"
+)
 ECHO  - Step 3 - Creating Manifest
 call "%CIRBA_HOME%\bin\audit-converter.bat" -m %fpath%conf\ "GCP"
 IF errorlevel 1 GOTO:END
@@ -98,6 +100,12 @@ call "%CIRBA_HOME%\bin\data-tools.bat" ImportAttributes -f %fpath%conf\
 IF errorlevel 1 GOTO:END
 
 :END
-IF %AUTO%=="t" GOTO:EOF
+IF %AUTO%=="t" (
+	IF errorlevel 1 (
+		IF %FILES%=="f" echo Required files were not created due to insufficient data ...
+		)
+	GOTO:EOF
+	set FILES="t"
+)
 IF errorlevel 1 echo Exiting program ...
 pause
