@@ -1,14 +1,23 @@
 @ECHO OFF
 
 rem ***************** Edit these default parameters ********************
+rem python directory:
+set PYDIR="C:\python27\python.exe"
+
 rem one week is 168 hours, month is 720 hours, cannot sample beyond 6 weeks (1008 hours)
-set HOURS=1 
+set HOURS=24
 
 rem are there any duplicate instance names across any of the projects? (Y/N)
 set APPEND=N
+
+rem would you like to keep retrieving deleted instances? (Y/N)
+set DELETED=N
+
+rem would you like the data to collect up to midnight last night? (Y/N)
+set MIDNIGHT=Y
 rem **************** edit nothing beyond this point *********************
 
-echo Copyright (c) 2017 Cirba Inc. D/B/A DensIFy. All Rights Reserved.
+echo Copyright (c) 2017 Cirba Inc. D/B/A Densify. All Rights Reserved.
 
 set AUTO="f"
 set FILE="f"
@@ -35,11 +44,13 @@ IF "%1"=="" (
 	set /p HOURS=Please enter your desired sample size in hours: 
 	echo Are there any duplicate instance names across any of the projects?
 	set /p APPEND=Please enter [Y/N] : 
+	echo Would you like to retrieve data from deleted instances?
+	set /p DELETED=Please enter [Y/N] : 
 )
 
 IF %MANUAL%=="t" (
 	echo __________________ Manually Loading %PROJECT_ID% _____________________________
-	call:discoveryFunc %PROJECT_ID% %HOURS% %APPEND%
+	call:discoveryFunc %PROJECT_ID% %HOURS% %APPEND% %DELETED% %MIDNIGHT%
 	GOTO:EOF
 )
 
@@ -47,7 +58,7 @@ IF %MANUAL%=="t" (
 IF %AUTO%=="t" (
 	for /f %%i in ('dir /b "%fpath%credentials\*.json"') do (
 		echo __________________ Automatically Loading %%i _____________________________
-		call:discoveryFunc %%i %HOURS% %APPEND% 
+		call:discoveryFunc %%i %HOURS% %APPEND% %DELETED% %MIDNIGHT%
 	)
 	set AUTO="f"
 	GOTO:END  
@@ -71,7 +82,7 @@ for /f %%i in ('dir /b %fpath%conf') do if not %%i == .gitignore 2>NUL del /q %f
 
 
 ECHO  - Step 1 - GCP Discovery
-py -2 %fpath%src\main.py -i %~1 -t %~2 -a %~3 
+%PYDIR% %fpath%src\main.py -i %~1 -t %~2 -a %~3 -d %~4 -e %~5 
 
 IF errorlevel 1 GOTO:END
 
@@ -104,8 +115,8 @@ IF %AUTO%=="t" (
 	IF errorlevel 1 (
 		IF %FILES%=="f" echo Required files were not created due to insufficient data ...
 		)
-	GOTO:EOF
 	set FILES="t"
+	GOTO:EOF
 )
 IF errorlevel 1 echo Exiting program ...
 pause

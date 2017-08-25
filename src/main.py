@@ -4,6 +4,7 @@
 
 print 'Importing libraries ...'
 
+import sys
 from google.cloud import monitoring
 from google.cloud.monitoring import Aligner
 from googleapiclient import discovery
@@ -14,30 +15,53 @@ from datetime import *
 import csv
 import argparse
 
-print 'Retrieving credentials ...'
-
+# Parsing inputted arguments from batch
 parser = argparse.ArgumentParser()
+
 parser.add_argument('-i', dest='project', default='kohls-mobile.json',
                     help='name of project credential file')
 parser.add_argument('-t', dest='hours', default='24',
                     help='amount of hours to receive data from')
-parser.add_argument('-a', dest='append', default='N',
+parser.add_argument('-a', dest='append', default='Y',
                     help='merge instance name + first 3 digits of inst_id')
+parser.add_argument('-d', dest='deleted', default='Y',
+                    help='retrieve data from deleted instances')
+parser.add_argument('-e', dest='end', default='Y',
+                    help='retrieve data until midnight last night')
 args = parser.parse_args()
 hours = int(args.hours)
 project_name = str(args.project)
 append = args.append
+read_deleted = args.deleted
+end_midnight = args.end
 if append == 'y' or append == 'Y':
     append = True
 else:
     append = False
+if read_deleted == 'y' or read_deleted == 'Y':
+    read_deleted = True
+else:
+    read_deleted = False
+if end_midnight == 'y' or end_midnight == 'Y':
+    end_midnight = True
+else:
+    end_midnight = False
+
+# Setting credentials as environment
+print 'Retrieving credentials ...'
+
 project_root = os.path.abspath(os.path.join(__file__, "../.."))
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = project_root + os.path.sep + os.path.join('credentials', project_name)
-credentials, project = google.auth.default()
+try:
+    credentials, project = google.auth.default()
+except:
+    print 'Invalid credentials ...'
+    sys.exit(1)
 
 resource_manager = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
 compute = discovery.build('compute', 'v1', credentials=credentials)
 
+# workload metrics to loop through
 instance_metrics = {'CPU Utilization': 'instance/cpu/utilization',  # concatenates with compute api base url
                     'Raw Disk Read Utilization': 'instance/disk/read_bytes_count',
                     'Raw Disk Write Utilization': 'instance/disk/write_bytes_count',
@@ -57,9 +81,12 @@ agent_metrics = {'Raw Mem Utilization': 'memory/bytes_used',
                  'Percent Memory Used': 'memory/percent_used',
                  'Raw Disk Space Usage': 'disk/bytes_used'}
 
+
 models = []  # holds all default system configurations found in us-central1-a
-instance_names = {}  # dict of instance id : instance name
 available_instances = []  # list of all non-deleted instances by name
+instance_names = {}  # dictionary to find any instance name using its instance id (id:name)
+instance_ids = {}  # reverse of the above (name:id)
+
 if hours > 1008:
     print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
     hours = 1008
@@ -76,45 +103,49 @@ class UTC(tzinfo):
     def dst(self, dt):
         return timedelta(0)
 
-now_utc = datetime.now(tz=UTC())  # creates datetime object at closest 5 min increment UTC (GMT)
-nearest_increment_utc = now_utc - timedelta(minutes=now_utc.minute % 5,
-                                            seconds=now_utc.second,
-                                            microseconds=now_utc.microsecond)
+
+if end_midnight:
+    nearest_increment_utc = datetime.combine(date.today(), time(0, tzinfo=UTC()))  # because time 0 = midnight yesterday
+else:
+    now_utc = datetime.now(tz=UTC()) # creates datetime object at closest 5 min increment UTC (GMT)
+    nearest_increment_utc = now_utc - timedelta(minutes=now_utc.minute % 5,
+                                                seconds=now_utc.second,
+                                                microseconds=now_utc.microsecond)
 
 
-def get_monitoring_client(project):  # returns stackdriver monitoring Client object using project
+def get_monitoring_client(project):  # returns stackdriver monitoring Client object
     return monitoring.Client(project=project, credentials=credentials)
 
 
 def main():
-    instance_ids = {}  # dict of instance name : instance id
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
-    projects = api_call(resource_manager.projects(), 'projects', [])  # TODO Program untested with multiple projects
+    projects = api_list_call(resource_manager.projects(), 'projects', [])  # TODO Program untested with multiple projects
     print "Found %d projects" % len(projects)
     for project in projects:  # for each project in the list of project dictionaries :
         project['instances'] = []  # add another key : value pair into project dictionary
         project_id = project['projectId']
         try:
-            m = api_call(compute.machineTypes(), 'items', {'project': project_id, 'zone': 'us-central1-a'})
+            m = api_list_call(compute.machineTypes(), 'items', {'project': project_id, 'zone': 'us-central1-a'})
         except:
             print 'No instances found.'
             return
         for model in m:
             models.append([model['name'], model['guestCpus'], model['memoryMb']])
-        all_zones = api_call(compute.zones(), 'items', {'project': project_id})
+        all_zones = api_list_call(compute.zones(), 'items', {'project': project_id})
         print "Found %d zones" % len(all_zones)
         disk_size = []
         print 'Loading instance attributes ...'
         for zone in all_zones:  # for each zone in list of zone dictionaries :
             zone_name = zone['name']
-            current_instances = api_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
+            current_instances = api_list_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
             if current_instances is not None and len(current_instances) > 0:
                 project['instances'].extend(current_instances)
                 # retrieve configs and store them in 'specs'
-                for disk in api_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
+                for disk in api_list_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
                 for disk_index, instance_data in enumerate(current_instances):  # loop through all instances to create lists of their config
+                    # get os data
                     try:
                         os_version = compute.disks().get(project=project_id, zone=zone_name, disk=instance_data['name'])
                         os_version = os_version.execute()['sourceImage'].split('/')
@@ -125,19 +156,17 @@ def main():
                         operating_system = 'Windows'
                     else:
                         operating_system = 'Linux'
+                    # get metadata etc.
                     if 'items' in instance_data['metadata'].keys():
                         metadata = instance_data['metadata']['items']
                     else:
                         metadata = ''
                     new_metadata = {}
                     group = ''
-                    owner = ''
-                    for data in metadata:  # take data with certain keys into variables, otherwise, if <250 characters, into new_metadata
+                    for data in metadata:  # take data with certain keys into variables, and the rest, if less than 250 characters, into list
                         if data['key'] == 'created-by':
                             group = data['value'].split('/')
                             group = group[len(group) - 1]
-                        elif data['key'] == 'owner':
-                            owner = data['value']
                         elif len(data['key']+data['value']) < 250:
                             new_metadata[str(data['key'])] = str(data['value'])
                     if new_metadata == {}:
@@ -145,6 +174,7 @@ def main():
                     metadata = str(new_metadata).replace('"', '""')
                     if len(metadata) > 250:
                         metadata = ''
+                    # get various attributes
                     zone_loc = zone_name.split('-')[0]+'-'+zone_name.split('-')[1]
                     creation_date = instance_data['creationTimestamp']
                     instance_name = (instance_data['name'])
@@ -155,8 +185,8 @@ def main():
                         status = 'Offline'
                     cpu_type = instance_data['cpuPlatform']
                     networkIP = instance_data['networkInterfaces'][0]['networkIP']
-                    machineurl = instance_data['machineType']
                     instance_id = instance_data['id']
+                    machineurl = instance_data['machineType']
                     segments = machineurl.split('/')
                     machine_type = segments[len(segments) - 1]
                     cpus = get_cpus(machine_type)
@@ -166,12 +196,11 @@ def main():
                         name_append = instance_name + '-' + instance_id[0:3]
                     else:
                         name_append = instance_name
+                    # put a list of attributes into a list item
                     specs.append([name_append, str(cpus), str(cpus), '1', '1', str(ram),
                                   'GCP', machine_type, str(benchmark), instance_id, cpu_type, '2600', operating_system, os_version])
-                    atts.append([name_append, instance_id, networkIP, creation_date, group, owner, '"'+metadata+'"',
+                    atts.append([name_append, instance_id, networkIP, creation_date, group, '"' + metadata + '"',
                                  zone_loc, zone_name, project_id, 'Google Cloud Platform', disk_size[disk_index], status])
-                    instance_ids[instance_name] = instance_id
-                    instance_names[instance_id] = instance_name
                     available_instances.append(instance_name)
         print "Found %d instances, retrieving %d hour(s) of metrics" % (len(project['instances']), hours)
         dict_metric = {}
@@ -181,7 +210,7 @@ def main():
             if not df.empty:
                 print key, "done"
                 df = df.groupby(axis=1, level=0).sum()  # sum if duplicate headers
-                if key == 'CPU Utilization':  # google output scale: 0-1, Densify import scale: 1-100
+                if key == 'CPU Utilization':  # google output scale: 0-1, Densify import scale: 0-100
                     df *= 100
                 else:  # google output measurement: per minute, Densify import measurement: per second
                     df /= 60
@@ -215,7 +244,14 @@ def main():
             dict_instances = {}
             for df in grouped_instances:
                 inst_name = list(df)[0][0]
-                if inst_name in instance_ids.keys():
+                if read_deleted == False:
+                    if inst_name in available_instances:
+                        instance_id = instance_ids[inst_name]
+                        if append:
+                            dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
+                        else:
+                            dict_instances[inst_name] = df
+                else:
                     instance_id = instance_ids[inst_name]
                     if append:
                         dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
@@ -231,16 +267,17 @@ def main():
         final_list.to_csv(path_or_buf=project_root + os.path.sep + 'workload.csv')
 
         # fill in inactive instances with empty data
-        new_names = get_names(atts)
-        for instance in new_names:
-            atts.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
-            specs.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
+        if not read_deleted:
+            new_names = get_names(atts)
+            for instance in new_names:
+                atts.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
+                specs.append([instance,'N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A','N/A'])
 
     to_csv_list(specs, 'gcp_config.csv', 'a')
     to_csv_list(atts, 'attributes.csv', 'b')
 
 
-def api_call(base, key, args):  # generic method for pulling relevant data from api response
+def api_list_call(base, key, args):  # generic method for pulling desired data from api response
     return_res = []
     if args:
         request = base.list(**args)
@@ -255,32 +292,34 @@ def api_call(base, key, args):  # generic method for pulling relevant data from 
     return return_res
 
 
-def monitoring_call(project_id, metric):  # hours = global variable parsed from discovery.bat
+def monitoring_call(project_id, metric):  # method for pulling monitoring data from api
     client = get_monitoring_client(project_id)
     METRIC = 'compute.googleapis.com/' + instance_metrics[metric]
     query = client.query(METRIC, hours=hours, end_time=nearest_increment_utc)\
-        .align(Aligner.ALIGN_MEAN, minutes=5)
+        .align(Aligner.ALIGN_MEAN, minutes=5)  # hours = global variable parsed from discovery.bat
+    if instance_names == {}:  # if instance_names is not defined, define it and instance_ids
+        column_names = list(query.as_dataframe(labels=['instance_name','instance_id']))
+        for name in column_names:
+            instance_names[name[1]] = name[0]
+            instance_ids[name[0]] = name[1]
     return query.as_dataframe(label='instance_name')
 
 
-def monitoring_agent_call(project_id, metric):  # hours = global variable parsed from discovery.bat
+def monitoring_agent_call(project_id, metric):  # method for pulling monitoring agent data from api
     client = get_monitoring_client(project_id)
     METRIC = 'agent.googleapis.com/' + agent_metrics[metric]
     query = client.query(METRIC, hours=hours, end_time=nearest_increment_utc)\
-        .align(Aligner.ALIGN_MEAN, minutes=5)
+        .align(Aligner.ALIGN_MEAN, minutes=5)  # hours = global variable parsed from discovery.bat
     try:
         frame = query.as_dataframe().filter(regex='used')
     except:
         return DataFrame({"": []})  # return empty dataframe
-    column_names = list(frame) # list of tuples from multi-index (per column)
-    for index, name in enumerate(sorted(column_names)):
-        try:
-            if instance_names[name[3]] in available_instances:
-                column_names[index] = instance_names[name[3]]
-            else:
-                column_names[index] = ''
-        except:
-            print 'instance id', name[3], 'not valid'
+    column_names = list(frame)
+    for index, name in enumerate(column_names):  # convert the column name from being instance id to instance name
+        if instance_names[name[3]]:
+            column_names[index] = instance_names[name[3]]
+        else:
+            column_names[index] = ''
     frame.columns = column_names
     return frame
 
@@ -292,7 +331,7 @@ def to_csv_list(lst, file_name, file_type):  # print any list of lists to a csv 
                     'HW Total Memory,HW Manufacturer,HW Model,BM CINT2006 Rate,HW Serial Number,'
                     'HW CPU Architecture,HW CPU Speed,OS Name,OS Version\n')
         if file_type == 'b':
-            f.write('host_name,Instance ID,Instance IP,Launch Time, Instance Group, Instance Owner, Instance Tags,'
+            f.write('host_name,Instance ID,Instance IP,Launch Time, Instance Group, Instance Tags,'
                     'Virtual Datacenter,Virtual Cluster,Virtual Domain,Virtual Technology,'
                     'PS Capacity,Power State\n')
         for item in lst:
@@ -322,7 +361,8 @@ def get_names(attr):  # look through the workload csv to find instances that do 
         lst = (list(reader))
     f.close()
     new_names = []
-    for metrics in range(1, len(lst), hours*12):
+    # see if instance has been defined already (is active), if not, add it to the list
+    for metrics in range(1, len(lst), hours*12):  # start at first row of data, stop after all instances have been looped, step by one instance each time
         instance_is_defined = False
         for instance in attr:
             if str(lst[metrics][0]) == str(instance[0]):
