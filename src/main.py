@@ -31,9 +31,9 @@ parser.add_argument('-e', dest='end', default='Y',
 args = parser.parse_args()
 hours = int(args.hours)
 project_name = str(args.project)
-append = args.append
-read_deleted = args.deleted
-end_midnight = args.end
+append = str(args.append)
+read_deleted = str(args.deleted)
+end_midnight = str(args.end)
 if append == 'y' or append == 'Y':
     append = True
 else:
@@ -46,6 +46,9 @@ if end_midnight == 'y' or end_midnight == 'Y':
     end_midnight = True
 else:
     end_midnight = False
+if hours > 1008:
+    print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
+    hours = 1008
 
 # Setting credentials as environment
 print 'Retrieving credentials ...'
@@ -58,6 +61,7 @@ except:
     print 'Invalid credentials ...'
     sys.exit(1)
 
+# Creating API service objects for current credential set
 resource_manager = discovery.build('cloudresourcemanager', 'v1', credentials=credentials)
 compute = discovery.build('compute', 'v1', credentials=credentials)
 
@@ -87,11 +91,6 @@ available_instances = []  # list of all non-deleted instances by name
 instance_names = {}  # dictionary to find any instance name using its instance id (id:name)
 instance_ids = {}  # reverse of the above (name:id)
 
-if hours > 1008:
-    print 'only 1008 hours (6 weeks) or less of metrics can be collected (retrieving 1008)'
-    hours = 1008
-
-
 class UTC(tzinfo):
     """UTC"""
     def utcoffset(self, dt):
@@ -103,7 +102,7 @@ class UTC(tzinfo):
     def dst(self, dt):
         return timedelta(0)
 
-
+# setting end time of time sample either yesterday midnight or nearest 5 minute increment
 if end_midnight:
     nearest_increment_utc = datetime.combine(date.today(), time(0, tzinfo=UTC()))  # because time 0 = midnight yesterday
 else:
@@ -113,14 +112,14 @@ else:
                                                 microseconds=now_utc.microsecond)
 
 
-def get_monitoring_client(project):  # returns stackdriver monitoring Client object
+def get_monitoring_client(project):  # returns Stackdriver monitoring Client object
     return monitoring.Client(project=project, credentials=credentials)
 
 
 def main():
     specs = []  # holds list of configs for each instance
     atts = []  # holds list of attributes for each instance
-    projects = api_list_call(resource_manager.projects(), 'projects', [])  # TODO Program untested with multiple projects
+    projects = api_list_call(resource_manager.projects(), 'projects', [])  # TODO Program untested with multiple projects simultaneously
     print "Found %d projects" % len(projects)
     for project in projects:  # for each project in the list of project dictionaries :
         project['instances'] = []  # add another key : value pair into project dictionary
@@ -130,13 +129,14 @@ def main():
         except:
             print 'No instances found.'
             return
-        for model in m:
+        for model in m:  # create list of default system configurations
             models.append([model['name'], model['guestCpus'], model['memoryMb']])
         all_zones = api_list_call(compute.zones(), 'items', {'project': project_id})
         print "Found %d zones" % len(all_zones)
         disk_size = []
         print 'Loading instance attributes ...'
-        for zone in all_zones:  # for each zone in list of zone dictionaries :
+
+        for zone in all_zones:  # iterate through all zones looking for active instances
             zone_name = zone['name']
             current_instances = api_list_call(compute.instances(), 'items', {'project': project_id, 'zone': zone_name})
             if current_instances is not None and len(current_instances) > 0:
@@ -145,14 +145,14 @@ def main():
                 for disk in api_list_call(compute.disks(), 'items', {'project': project_id, 'zone': zone_name}):  # loop through all disks to create a list
                     disk_size.append(disk['sizeGb'])
                 for disk_index, instance_data in enumerate(current_instances):  # loop through all instances to create lists of their config
-                    # get os data
-                    try:
+
+                    try:  # Does not support custom os, will default to linux
                         os_version = compute.disks().get(project=project_id, zone=zone_name, disk=instance_data['name'])
                         os_version = os_version.execute()['sourceImage'].split('/')
                         os_version = os_version[len(os_version)-1]
                     except:
                         os_version = 'linux'
-                    if 'windows' in os_version:
+                    if 'windows' in os_version:  # determines os by whether or not the version contains 'Windows'
                         operating_system = 'Windows'
                     else:
                         operating_system = 'Linux'
@@ -209,7 +209,7 @@ def main():
             df = (monitoring_call(project_id, key))
             if not df.empty:
                 print key, "done"
-                df = df.groupby(axis=1, level=0).sum()  # sum if duplicate headers
+                df = df.groupby(axis=1, level=0).sum()  # sum duplicate headers - multiple drives - cumulative activity
                 if key == 'CPU Utilization':  # google output scale: 0-1, Densify import scale: 0-100
                     df *= 100
                 else:  # google output measurement: per minute, Densify import measurement: per second
@@ -244,19 +244,19 @@ def main():
             dict_instances = {}
             for df in grouped_instances:
                 inst_name = list(df)[0][0]
-                if read_deleted == False:
+                instance_id = instance_ids[inst_name]
+                if not read_deleted:
                     if inst_name in available_instances:
-                        instance_id = instance_ids[inst_name]
                         if append:
                             dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
                         else:
                             dict_instances[inst_name] = df
                 else:
-                    instance_id = instance_ids[inst_name]
-                    if append:
-                        dict_instances[inst_name + '-' + instance_id[0:3]] = df  # create key:value pair of instance name : dataframe
+                    if append:  # add part of instance id to instance name key for uniqueness
+                        dict_instances[inst_name + '-' + instance_id[0:3]] = df
                     else:
                         dict_instances[inst_name] = df
+
                 df.columns = df.columns.droplevel()  # drop instance_name header
         try:
             final_list = concat(dict_instances, names=['host_name', 'Datetime'])  # vertical concat, names = index header
